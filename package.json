@@ -1,70 +1,70 @@
 {
-    "name": "opencode-chat",
-    "displayName": "opencode chat",
-    "description": "OpenCode chat extension for VS Code",
-    "repository": "https://github.com/kwickramasekara/opencode-chat",
-    "publisher": "kwickramasekara",
-    "version": "0.1.0",
-    "engines": {
-        "vscode": "^1.80.0"
+  "name": "opencode-chat",
+  "displayName": "opencode chat",
+  "description": "OpenCode chat extension for the IDE",
+  "repository": "https://github.com/kwickramasekara/opencode-chat",
+  "publisher": "kwickramasekara",
+  "version": "0.2.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "icon": "icon.png",
+  "activationEvents": [],
+  "main": "./out/main.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "opencode-sidebar",
+          "title": "OpenCode",
+          "icon": "icon.svg"
+        }
+      ]
     },
-    "categories": [
-        "Other"
-    ],
-    "icon": "icon.png",
-    "activationEvents": [],
-    "main": "./out/main.js",
-    "contributes": {
-        "viewsContainers": {
-            "activitybar": [
-                {
-                    "id": "opencode-sidebar",
-                    "title": "OpenCode",
-                    "icon": "icon.svg"
-                }
-            ]
-        },
-        "views": {
-            "opencode-sidebar": [
-                {
-                    "type": "webview",
-                    "id": "opencode.chatView",
-                    "name": "Chat"
-                }
-            ]
-        },
-        "commands": [
-            {
-                "command": "opencode.focusChat",
-                "title": "OpenCode: Focus Chat",
-                "category": "OpenCode"
-            },
-            {
-                "command": "opencode.openNewTerminal",
-                "title": "OpenCode: Open New Terminal",
-                "category": "OpenCode"
-            },
-            {
-                "command": "opencode.openTerminal",
-                "title": "OpenCode: Open Terminal",
-                "category": "OpenCode"
-            },
-            {
-                "command": "opencode.addFilepathToTerminal",
-                "title": "OpenCode: Add Filepath to Terminal",
-                "category": "OpenCode"
-            }
-        ]
+    "views": {
+      "opencode-sidebar": [
+        {
+          "type": "webview",
+          "id": "opencode.chatView",
+          "name": "Chat"
+        }
+      ]
     },
-    "scripts": {
-        "vscode:prepublish": "npm run compile",
-        "compile": "tsc -p ./",
-        "watch": "tsc -w -p ./"
-    },
-    "devDependencies": {
-        "@types/node": "^18.0.0",
-        "@types/vscode": "^1.80.0",
-        "typescript": "^5.0.0"
-    },
-    "license": "MIT"
+    "commands": [
+      {
+        "command": "opencode.focusChat",
+        "title": "OpenCode: Focus Chat",
+        "category": "OpenCode"
+      },
+      {
+        "command": "opencode.openNewTerminal",
+        "title": "OpenCode: Open New Terminal",
+        "category": "OpenCode"
+      },
+      {
+        "command": "opencode.openTerminal",
+        "title": "OpenCode: Open Terminal",
+        "category": "OpenCode"
+      },
+      {
+        "command": "opencode.addFilepathToTerminal",
+        "title": "OpenCode: Add Filepath to Terminal",
+        "category": "OpenCode"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.0.0"
+  },
+  "license": "MIT"
 }
