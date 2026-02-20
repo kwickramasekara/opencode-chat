@@ -32,29 +32,7 @@
           "name": "Chat"
         }
       ]
-    },
-    "commands": [
-      {
-        "command": "opencode.focusChat",
-        "title": "OpenCode: Focus Chat",
-        "category": "OpenCode"
-      },
-      {
-        "command": "opencode.openNewTerminal",
-        "title": "OpenCode: Open New Terminal",
-        "category": "OpenCode"
-      },
-      {
-        "command": "opencode.openTerminal",
-        "title": "OpenCode: Open Terminal",
-        "category": "OpenCode"
-      },
-      {
-        "command": "opencode.addFilepathToTerminal",
-        "title": "OpenCode: Add Filepath to Terminal",
-        "category": "OpenCode"
-      }
-    ]
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
