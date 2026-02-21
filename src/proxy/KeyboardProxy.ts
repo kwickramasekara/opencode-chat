@@ -34,9 +34,9 @@ const KEYBOARD_SCRIPT = /*html*/ `
     });
 
     window.addEventListener("message", function (e) {
-      if (!e.data || e.data.type !== "paste-response") return;
+      if (!e.data || (e.data.type !== "paste-response" && e.data.type !== "insert-text")) return;
 
-      if (e.data.image) {
+      if (e.data.type === "paste-response" && e.data.image) {
         fetch(e.data.image)
           .then(function (r) { return r.blob(); })
           .then(function (blob) {
@@ -54,19 +54,51 @@ const KEYBOARD_SCRIPT = /*html*/ `
           });
       } else if (typeof e.data.text === "string") {
         var t = e.data.text;
+        var isInsert = e.data.type === "insert-text";
         var el = document.activeElement;
+
+        // If inserting and no input is active, try to find and focus the main prompt input
+        if (isInsert && (!el || (el.tagName !== "INPUT" && el.tagName !== "TEXTAREA" && !el.isContentEditable && !(el.closest && el.closest("[contenteditable]"))))) {
+          el = document.querySelector("div[data-component='prompt-input']");
+          if (el) {
+            el.focus();
+          }
+        }
+
         if (!el) return;
 
+        var insertStr = isInsert ? " " + t + " " : t;
+
         if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+          // Native setters so React registers the input
+          var nativeTextAreaSetter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value");
+          var nativeInputSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+          
           var s = el.selectionStart || 0;
           var end = el.selectionEnd || 0;
-          el.setRangeText(t, s, end, "end");
+          
+          if (nativeTextAreaSetter && nativeTextAreaSetter.set && el.tagName === "TEXTAREA") {
+            var val = el.value || "";
+            nativeTextAreaSetter.set.call(el, val.substring(0, s) + insertStr + val.substring(end));
+            el.selectionStart = el.selectionEnd = s + insertStr.length;
+          } else if (nativeInputSetter && nativeInputSetter.set && el.tagName === "INPUT") {
+            var val = el.value || "";
+            nativeInputSetter.set.call(el, val.substring(0, s) + insertStr + val.substring(end));
+            el.selectionStart = el.selectionEnd = s + insertStr.length;
+          } else {
+            el.setRangeText(insertStr, s, end, "end");
+          }
+          
           el.dispatchEvent(new Event("input", { bubbles: true }));
         } else if (
           el.isContentEditable ||
           (el.closest && el.closest("[contenteditable]"))
         ) {
-          document.execCommand("insertText", false, t);
+          // If the element is not currently focused (the selection is not inside it), we must focus it first
+          if (document.activeElement !== el) {
+            el.focus();
+          }
+          document.execCommand("insertText", false, insertStr);
         }
       }
     });

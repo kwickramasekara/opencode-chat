@@ -33,6 +33,12 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
     this._renderCurrentState();
   }
 
+  public addToChat(filePath: string) {
+    if (this._view) {
+      this._view.webview.postMessage({ type: "insert-text", text: filePath });
+    }
+  }
+
   setError(message: string, showInstallHint = true) {
     this._error = { message, showInstallHint };
     this._serverUrl = undefined;

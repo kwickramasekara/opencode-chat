@@ -80,9 +80,12 @@
           }
         });
 
-        // Relay paste-response from extension back into the iframe
+        // Relay paste-response or insert-text from extension back into the iframe
         window.addEventListener("message", function (e) {
-          if (e.data && e.data.type === "paste-response") {
+          if (
+            e.data &&
+            (e.data.type === "paste-response" || e.data.type === "insert-text")
+          ) {
             iframe.contentWindow.postMessage(e.data, "*");
           }
         });

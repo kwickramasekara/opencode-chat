@@ -28,6 +28,20 @@ export function activate(context: vscode.ExtensionContext) {
   // Start the opencode server
   serverManager = new ServerManager();
   serverManager.start(provider, context, port, proxyPort);
+
+  // Register the opencode.addToChat command
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      "opencode.addToChat",
+      (uri?: vscode.Uri) => {
+        const fileUri = uri || vscode.window.activeTextEditor?.document.uri;
+        if (fileUri) {
+          const relativePath = vscode.workspace.asRelativePath(fileUri);
+          provider.addToChat(relativePath);
+        }
+      },
+    ),
+  );
 }
 
 export function deactivate() {

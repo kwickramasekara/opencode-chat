@@ -15,6 +15,27 @@
   "activationEvents": [],
   "main": "./out/main.js",
   "contributes": {
+    "commands": [
+      {
+        "command": "opencode.addToChat",
+        "title": "opencode: Add to Chat",
+        "icon": "$(add)"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "opencode.addToChat",
+          "group": "navigation"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "opencode.addToChat",
+          "group": "navigation"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
