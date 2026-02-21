@@ -2,6 +2,8 @@
 
 Unofficial opencode chat extension that integrates the webview of opencode chat into your IDE.
 
+![Preview](https://raw.githubusercontent.com/kwickramasekara/opencode-chat/refs/heads/main/preview.png)
+
 Note: requires opencode CLI to be installed. See https://opencode.ai/
 
 ## Development
