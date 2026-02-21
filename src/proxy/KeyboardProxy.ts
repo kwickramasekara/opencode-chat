@@ -76,6 +76,7 @@ const KEYBOARD_SCRIPT = /*html*/ `
 
 export function startKeyboardProxy(
   targetPort: number,
+  proxyPort: number = 0,
 ): Promise<{ server: http.Server; port: number }> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -150,9 +151,24 @@ export function startKeyboardProxy(
       clientSocket.on("error", () => serverSocket.destroy());
     });
 
-    server.listen(0, "localhost", () => {
-      resolve({ server, port: (server.address() as net.AddressInfo).port });
+    const tryListen = (port: number) => {
+      server.listen(port, "localhost", () => {
+        server.removeAllListeners("error");
+        server.on("error", reject);
+        resolve({ server, port: (server.address() as net.AddressInfo).port });
+      });
+    };
+
+    server.on("error", (err: any) => {
+      if (err.code === "EADDRINUSE" && proxyPort !== 0) {
+        // Fallback to random port
+        proxyPort = 0;
+        tryListen(0);
+      } else {
+        reject(err);
+      }
     });
-    server.on("error", reject);
+
+    tryListen(proxyPort);
   });
 }

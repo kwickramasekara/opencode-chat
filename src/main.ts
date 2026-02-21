@@ -12,6 +12,11 @@ export function activate(context: vscode.ExtensionContext) {
   const port =
     storedPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
 
+  const storedProxyPort =
+    context.workspaceState.get<number>("opencode.proxyPort");
+  const proxyPort =
+    storedProxyPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
+
   // Register the webview panel provider
   const provider = new OpencodeViewProvider(context.extensionUri);
   context.subscriptions.push(
@@ -22,7 +27,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Start the opencode server
   serverManager = new ServerManager();
-  serverManager.start(provider, context, port);
+  serverManager.start(provider, context, port, proxyPort);
 }
 
 export function deactivate() {

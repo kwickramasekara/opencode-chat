@@ -12,6 +12,7 @@ export class ServerManager {
     provider: OpencodeViewProvider,
     context: vscode.ExtensionContext,
     port: number,
+    proxyPort: number,
   ): Promise<void> {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
@@ -22,14 +23,20 @@ export class ServerManager {
 
     // Persist the port so we can reuse it next time (preserves iframe localStorage)
     context.workspaceState.update("opencode.serverPort", port);
+    context.workspaceState.update("opencode.proxyPort", proxyPort);
 
     // Helper: start the keyboard proxy and hand the proxied URL to the provider
     const serveViaProxy = async (serverUrl: string) => {
       try {
         const parsed = new URL(serverUrl);
         const realPort = parseInt(parsed.port, 10);
-        const result = await startKeyboardProxy(realPort);
+        const result = await startKeyboardProxy(realPort, proxyPort);
         this.proxyServer = result.server;
+
+        if (result.port !== proxyPort) {
+          context.workspaceState.update("opencode.proxyPort", result.port);
+        }
+
         parsed.port = result.port.toString();
         parsed.pathname = `/${Buffer.from(cwd).toString("base64url")}`;
         provider.setServerUrl(parsed.toString());
