@@ -1,7 +1,7 @@
 {
   "name": "opencode-chat",
   "displayName": "opencode chat",
-  "description": "OpenCode chat extension for the IDE",
+  "description": "opencode chat extension for the IDE",
   "repository": "https://github.com/kwickramasekara/opencode-chat",
   "publisher": "kwickramasekara",
   "version": "0.4.0",
@@ -19,7 +19,7 @@
       "activitybar": [
         {
           "id": "opencode-sidebar",
-          "title": "OpenCode",
+          "title": "opencode",
           "icon": "icon.svg"
         }
       ]
