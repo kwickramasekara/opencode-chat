@@ -35,9 +35,10 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
-    "watch": "tsc -w -p ./"
+    "copy-templates": "mkdir -p out/webview/templates && cp src/webview/templates/*.html out/webview/templates/",
+    "compile": "tsc -p ./ && npm run copy-templates",
+    "publish": "npm run compile && ovsx publish",
+    "watch": "npm run copy-templates && tsc -w -p ./"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",

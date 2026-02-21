@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; frame-src {{SERVER_URL}}; style-src 'unsafe-inline'; script-src 'unsafe-inline';"
+    />
+    <style>
+      body {
+        margin: 0 auto;
+        padding: 0;
+        overflow: hidden;
+        height: 100vh;
+        width: 100vw;
+        max-width: 640px;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        border: none;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe
+      src="{{SERVER_URL}}"
+      allow="clipboard-read; clipboard-write"
+    ></iframe>
+    <script>
+      (function () {
+        var vscode = acquireVsCodeApi();
+        var iframe = document.querySelector("iframe");
+
+        // Relay paste-request from iframe — try clipboard.read() for images first
+        window.addEventListener("message", function (e) {
+          if (!e.data || e.data.type !== "paste-request") return;
+
+          if (navigator.clipboard && navigator.clipboard.read) {
+            navigator.clipboard
+              .read()
+              .then(function (items) {
+                var imageFound = false;
+                for (var i = 0; i < items.length; i++) {
+                  var types = items[i].types;
+                  for (var j = 0; j < types.length; j++) {
+                    if (types[j].startsWith("image/")) {
+                      imageFound = true;
+                      (function (mime) {
+                        items[i].getType(mime).then(function (blob) {
+                          var reader = new FileReader();
+                          reader.onload = function () {
+                            iframe.contentWindow.postMessage(
+                              {
+                                type: "paste-response",
+                                image: reader.result,
+                                mimeType: mime,
+                              },
+                              "*",
+                            );
+                          };
+                          reader.readAsDataURL(blob);
+                        });
+                      })(types[j]);
+                      break;
+                    }
+                  }
+                  if (imageFound) break;
+                }
+                if (!imageFound) {
+                  vscode.postMessage({ type: "paste-request" });
+                }
+              })
+              .catch(function () {
+                vscode.postMessage({ type: "paste-request" });
+              });
+          } else {
+            vscode.postMessage({ type: "paste-request" });
+          }
+        });
+
+        // Relay paste-response from extension back into the iframe
+        window.addEventListener("message", function (e) {
+          if (e.data && e.data.type === "paste-response") {
+            iframe.contentWindow.postMessage(e.data, "*");
+          }
+        });
+      })();
+    </script>
+  </body>
+</html>

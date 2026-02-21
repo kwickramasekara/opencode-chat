@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: transparent;
+        color: var(--vscode-foreground);
+        font-family: var(--vscode-font-family);
+        font-size: var(--vscode-font-size);
+      }
+      .container {
+        text-align: center;
+        padding: 20px;
+      }
+      .icon {
+        font-size: 32px;
+        margin-bottom: 12px;
+        opacity: 0.5;
+      }
+      p {
+        margin: 0 0 8px;
+        opacity: 0.7;
+      }
+      code {
+        font-family: var(--vscode-editor-font-family);
+        background: var(--vscode-textBlockQuote-background);
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="icon">⚠</div>
+      <p>{{ERROR_MESSAGE}}</p>
+      {{INSTALL_HINT}}
+    </div>
+  </body>
+</html>

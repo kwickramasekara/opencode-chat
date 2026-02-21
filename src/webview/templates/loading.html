@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background: transparent;
+        color: var(--vscode-foreground);
+        font-family: var(--vscode-font-family);
+        font-size: var(--vscode-font-size);
+      }
+      .container {
+        text-align: center;
+        padding: 20px;
+      }
+      .icon {
+        width: 48px;
+        height: 48px;
+        margin: 0 auto 16px;
+        animation: pulse 2s infinite ease-in-out;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 0.3;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      p {
+        margin: 0;
+        opacity: 0.7;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <svg
+        class="icon"
+        viewBox="96 96 320 320"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <path d="M320 224V352H192V224H320Z" fill="currentColor" opacity="0.6" />
+        <path
+          fill-rule="evenodd"
+          clip-rule="evenodd"
+          d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z"
+          fill="currentColor"
+        />
+      </svg>
+      <p>Starting opencode server...</p>
+    </div>
+  </body>
+</html>
