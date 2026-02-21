@@ -4,7 +4,7 @@
   "description": "opencode chat extension for the IDE",
   "repository": "https://github.com/kwickramasekara/opencode-chat",
   "publisher": "kwickramasekara",
-  "version": "0.4.0",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.80.0"
   },
