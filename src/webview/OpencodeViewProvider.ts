@@ -22,6 +22,9 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
         const text = await vscode.env.clipboard.readText();
         webviewView.webview.postMessage({ type: "paste-response", text });
       }
+      if (message.type === "copy-request" && typeof message.text === "string") {
+        await vscode.env.clipboard.writeText(message.text);
+      }
     });
 
     this._renderCurrentState();

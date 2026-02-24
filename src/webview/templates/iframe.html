@@ -33,6 +33,13 @@
         var vscode = acquireVsCodeApi();
         var iframe = document.querySelector("iframe");
 
+        // Relay copy-request from iframe to extension host
+        window.addEventListener("message", function (e) {
+          if (e.data && e.data.type === "copy-request") {
+            vscode.postMessage({ type: "copy-request", text: e.data.text });
+          }
+        });
+
         // Relay paste-request from iframe — try clipboard.read() for images first
         window.addEventListener("message", function (e) {
           if (!e.data || e.data.type !== "paste-request") return;

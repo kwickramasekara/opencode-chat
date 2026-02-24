@@ -11,6 +11,15 @@ import * as net from "net";
 const KEYBOARD_SCRIPT = /*html*/ `
 <script>
   (function () {
+    // Override navigator.clipboard.writeText to relay through parent
+    if (navigator.clipboard) {
+      var origWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
+      navigator.clipboard.writeText = function (text) {
+        window.parent.postMessage({ type: "copy-request", text: text }, "*");
+        return Promise.resolve();
+      };
+    }
+
     document.addEventListener("keydown", function (e) {
       var mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
