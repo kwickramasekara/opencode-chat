@@ -39,6 +39,14 @@ const KEYBOARD_SCRIPT = /*html*/ `
           e.preventDefault();
           window.parent.postMessage({ type: "paste-request" }, "*");
           break;
+        case "z":
+          e.preventDefault();
+          if (e.shiftKey) {
+            document.execCommand("redo");
+          } else {
+            document.execCommand("undo");
+          }
+          break;
       }
     });
 
