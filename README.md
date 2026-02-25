@@ -1,6 +1,6 @@
 # opencode chat
 
-Unofficial opencode chat extension that integrates the webview of opencode chat into your IDE.
+Unofficial extension that integrates the webview of opencode chat into your IDE.
 
 ![Preview](https://raw.githubusercontent.com/kwickramasekara/opencode-chat/refs/heads/main/preview.png)
 
