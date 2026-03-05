@@ -6,8 +6,21 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _serverUrl?: string;
   private _error?: { message: string; showInstallHint: boolean };
+  private _sidebarType: "primary" | "auxiliary" | null = null;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
+
+  get isViewVisible(): boolean {
+    return !!this._view?.visible;
+  }
+
+  get sidebarType(): "primary" | "auxiliary" | null {
+    return this._sidebarType;
+  }
+
+  set sidebarType(type: "primary" | "auxiliary" | null) {
+    this._sidebarType = type;
+  }
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
     this._view = webviewView;

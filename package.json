@@ -20,6 +20,10 @@
         "command": "opencode.addToChat",
         "title": "opencode: Add to Chat",
         "icon": "$(add)"
+      },
+      {
+        "command": "opencode.toggleChatView",
+        "title": "opencode: Toggle Chat View"
       }
     ],
     "menus": {

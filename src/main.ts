@@ -4,6 +4,11 @@ import { ServerManager } from "./server/ServerManager";
 
 let serverManager: ServerManager | undefined;
 
+const SIDEBAR_CMDS = {
+  primary: "workbench.action.toggleSidebarVisibility",
+  auxiliary: "workbench.action.toggleAuxiliaryBar",
+} as const;
+
 export function activate(context: vscode.ExtensionContext) {
   // Reuse the port from the last session so the iframe origin stays the same
   // across restarts, preserving localStorage (theme, settings, etc.).
@@ -41,6 +46,41 @@ export function activate(context: vscode.ExtensionContext) {
         }
       },
     ),
+  );
+
+  // Restore cached sidebar type from workspace state
+  const cachedSidebarType = context.workspaceState.get<"primary" | "auxiliary">(
+    "opencode.sidebarType",
+  );
+  if (cachedSidebarType) {
+    provider.sidebarType = cachedSidebarType;
+  }
+
+  // Register the toggle command for showing/hiding the sidebar
+  context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.toggleChatView", async () => {
+      if (!provider.isViewVisible) {
+        await vscode.commands.executeCommand("opencode.chatView.focus");
+        return;
+      }
+
+      // Use cached sidebar type, default to auxiliary (secondary sidebar)
+      const tryFirst = provider.sidebarType ?? "auxiliary";
+      await vscode.commands.executeCommand(SIDEBAR_CMDS[tryFirst]);
+
+      if (!provider.isViewVisible) {
+        provider.sidebarType = tryFirst;
+        context.workspaceState.update("opencode.sidebarType", tryFirst);
+        return;
+      }
+
+      // Wrong sidebar — undo and try the other
+      await vscode.commands.executeCommand(SIDEBAR_CMDS[tryFirst]);
+      const other = tryFirst === "auxiliary" ? "primary" : "auxiliary";
+      await vscode.commands.executeCommand(SIDEBAR_CMDS[other]);
+      provider.sidebarType = other;
+      context.workspaceState.update("opencode.sidebarType", other);
+    }),
   );
 }
 
