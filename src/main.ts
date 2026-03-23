@@ -82,6 +82,16 @@ export function activate(context: vscode.ExtensionContext) {
       context.workspaceState.update("opencode.sidebarType", other);
     }),
   );
+
+  // Register the restart command to kill the server and start fresh
+  context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.restart", () => {
+      serverManager?.dispose();
+      provider.setLoading();
+      serverManager = new ServerManager();
+      serverManager.start(provider, context, port, proxyPort);
+    }),
+  );
 }
 
 export function deactivate() {

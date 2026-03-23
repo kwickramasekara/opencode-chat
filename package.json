@@ -24,6 +24,10 @@
       {
         "command": "opencode.toggleChatView",
         "title": "opencode: Toggle Chat View"
+      },
+      {
+        "command": "opencode.restart",
+        "title": "opencode: Restart"
       }
     ],
     "menus": {

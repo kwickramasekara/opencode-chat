@@ -61,6 +61,12 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
     this._renderCurrentState();
   }
 
+  setLoading() {
+    this._serverUrl = undefined;
+    this._error = undefined;
+    this._renderCurrentState();
+  }
+
   private _renderCurrentState() {
     if (!this._view) return;
 
