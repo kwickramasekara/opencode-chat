@@ -4,6 +4,8 @@ Unofficial extension that integrates the webview of opencode chat into your IDE.
 
 ![Preview](https://raw.githubusercontent.com/kwickramasekara/opencode-chat/refs/heads/main/preview.png)
 
+> Please note: This extension used to be published under `kwickramasekara.opencode-chat` but was renamed to `kwickramasekara.opencode-chat-unofficial` to avoid confusion with another extension with the same name.
+
 ## Features
 
 - **Sidebar Integration**: Access the OpenCode chat interface directly from your VS Code activity bar.
