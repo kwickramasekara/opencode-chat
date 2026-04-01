@@ -16,15 +16,20 @@ const WEBVIEW_SCRIPT = /*html*/ `
     // Notification sounds are triggered by server events (no gesture), so
     // native Audio.play() fails with NotAllowedError.
     //
-    // Fix: unlock an AudioContext on the first user interaction (click/key),
-    // then use it as a fallback when native play() is blocked. A resumed
-    // AudioContext stays unlocked and can play audio programmatically.
+    // Some Electron builds (stock VS Code) also lack proprietary codecs
+    // (AAC), causing NotSupportedError even for Audio elements and
+    // decodeAudioData. When both fail, we relay the audio data to the
+    // extension host which can play it via system audio commands.
     var _audioCtx = null;
     var _audioUnlocked = false;
+    var _audioModeByMime = Object.create(null);
+    var _canPlayProbe = document.createElement("audio");
 
     function getAudioCtx() {
       if (!_audioCtx) {
-        _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        try {
+          _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) { /* no AudioContext support */ }
       }
       return _audioCtx;
     }
@@ -32,6 +37,7 @@ const WEBVIEW_SCRIPT = /*html*/ `
     function unlockAudio() {
       if (_audioUnlocked) return;
       var ctx = getAudioCtx();
+      if (!ctx) return;
       if (ctx.state === "suspended") {
         ctx.resume().then(function () { _audioUnlocked = true; });
       } else {
@@ -42,12 +48,35 @@ const WEBVIEW_SCRIPT = /*html*/ `
     document.addEventListener("keydown", unlockAudio, true);
     document.addEventListener("touchstart", unlockAudio, true);
 
+    function dataUriToArrayBuffer(dataUri) {
+      var comma = dataUri.indexOf(",");
+      if (comma === -1) return null;
+      var meta = dataUri.substring(0, comma);
+      var b64 = dataUri.substring(comma + 1);
+      if (meta.indexOf(";base64") === -1) return null;
+      var bin = atob(b64);
+      var buf = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+      return buf.buffer;
+    }
+
+    function getAudioBuffer(src) {
+      if (src.indexOf("data:") === 0) {
+        var ab = dataUriToArrayBuffer(src);
+        if (ab) return Promise.resolve(ab);
+      }
+      return fetch(src).then(function (r) {
+        if (!r.ok) throw new Error("Fetch failed: " + r.status);
+        return r.arrayBuffer();
+      });
+    }
+
     function playViaWebAudio(src) {
       var ctx = getAudioCtx();
+      if (!ctx) return Promise.reject(new Error("No AudioContext"));
       var p = ctx.state === "suspended" ? ctx.resume() : Promise.resolve();
       return p
-        .then(function () { return fetch(src); })
-        .then(function (r) { return r.arrayBuffer(); })
+        .then(function () { return getAudioBuffer(src); })
         .then(function (buf) { return ctx.decodeAudioData(buf); })
         .then(function (decoded) {
           var source = ctx.createBufferSource();
@@ -57,14 +86,91 @@ const WEBVIEW_SCRIPT = /*html*/ `
         });
     }
 
+    function playViaExtensionHost(src) {
+      window.parent.postMessage({ type: "play-audio", src: src }, "*");
+    }
+
+    function getMimeFromSrc(src) {
+      if (!src || src.indexOf("data:") !== 0) return "";
+      var comma = src.indexOf(",");
+      if (comma === -1) return "";
+      var meta = src.substring(5, comma);
+      var semi = meta.indexOf(";");
+      return (semi === -1 ? meta : meta.substring(0, semi)).toLowerCase();
+    }
+
+    function getModeForMime(mime) {
+      if (!mime) return "auto";
+      return _audioModeByMime[mime] || "auto";
+    }
+
+    function setModeForMime(mime, mode) {
+      if (!mime) return;
+      _audioModeByMime[mime] = mode;
+    }
+
+    function canElementPlayMime(mime) {
+      if (!mime) return true;
+      try {
+        return _canPlayProbe.canPlayType(mime) !== "";
+      } catch (e) {
+        return true;
+      }
+    }
+
+    function isCodecFailure(err) {
+      if (!err) return false;
+      return (
+        err.name === "EncodingError" ||
+        err.name === "NotSupportedError" ||
+        /decode|codec|supported source/i.test(String(err.message || ""))
+      );
+    }
+
+    function tryWebAudioOrExtension(src, mime, setWebAudioOnSuccess) {
+      return playViaWebAudio(src)
+        .then(function () {
+          if (setWebAudioOnSuccess && mime) setModeForMime(mime, "webaudio");
+        })
+        .catch(function (err) {
+          if (isCodecFailure(err)) {
+            setModeForMime(mime, "extension-host");
+            playViaExtensionHost(src);
+            return;
+          }
+          throw err;
+        });
+    }
+
     var OrigAudio = window.Audio;
     window.Audio = function (src) {
       var a = new OrigAudio(src);
       var origPlay = a.play.bind(a);
       a.play = function () {
+        var mime = getMimeFromSrc(src);
+        var mode = getModeForMime(mime);
+
+        if (mode === "extension-host") {
+          playViaExtensionHost(src);
+          return Promise.resolve();
+        }
+
+        if (mode === "webaudio") {
+          return tryWebAudioOrExtension(src, mime, false).catch(function () {});
+        }
+
+        // Fast-path for known unsupported codecs in this runtime.
+        if (mime && !canElementPlayMime(mime)) {
+          setModeForMime(mime, "webaudio");
+          return tryWebAudioOrExtension(src, mime, false);
+        }
+
         return origPlay().catch(function (err) {
-          if (err.name === "NotAllowedError" && src) {
-            return playViaWebAudio(src);
+          if (
+            (err.name === "NotAllowedError" || err.name === "NotSupportedError") &&
+            src
+          ) {
+            return tryWebAudioOrExtension(src, mime, true);
           }
           throw err;
         });

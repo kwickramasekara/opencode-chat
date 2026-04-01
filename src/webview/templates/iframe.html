@@ -38,6 +38,9 @@
           if (e.data && e.data.type === "copy-request") {
             vscode.postMessage({ type: "copy-request", text: e.data.text });
           }
+          if (e.data && e.data.type === "play-audio") {
+            vscode.postMessage({ type: "play-audio", src: e.data.src });
+          }
         });
 
         // Relay paste-request from iframe — try clipboard.read() for images first

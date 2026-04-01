@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import * as fs from "fs";
 import * as path from "path";
+import * as os from "os";
+import { exec } from "child_process";
 
 export class OpencodeViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
@@ -37,6 +39,9 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
       }
       if (message.type === "copy-request" && typeof message.text === "string") {
         await vscode.env.clipboard.writeText(message.text);
+      }
+      if (message.type === "play-audio" && typeof message.src === "string") {
+        void this._playAudioDataUri(message.src);
       }
     });
 
@@ -111,5 +116,60 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
     return this._readTemplate("error.html")
       .replaceAll("{{ERROR_MESSAGE}}", message)
       .replaceAll("{{INSTALL_HINT}}", installHint);
+  }
+
+  // ── System-level audio playback for environments without codec support ──
+  // When the webview cannot play audio (e.g. stock VS Code lacks AAC codecs),
+  // we decode the data URI, write a temp file, and play via system commands.
+  private async _playAudioDataUri(dataUri: string) {
+    try {
+      const match = dataUri.match(
+        /^data:audio\/([a-zA-Z0-9.+-]+);base64,(.+)$/,
+      );
+      if (!match) return;
+
+      const ext = match[1];
+      const base64 = match[2];
+      const buffer = Buffer.from(base64, "base64");
+
+      const tmpFile = path.join(
+        os.tmpdir(),
+        `opencode-audio-${Date.now()}.${ext}`,
+      );
+      await fs.promises.writeFile(tmpFile, buffer);
+
+      const cleanup = async () => {
+        try {
+          await fs.promises.unlink(tmpFile);
+        } catch {}
+      };
+
+      let cmd: string;
+      switch (process.platform) {
+        case "darwin":
+          cmd = `afplay "${tmpFile}"`;
+          break;
+        case "linux":
+          // Try paplay (PulseAudio) first, fall back to aplay (ALSA)
+          cmd = `paplay "${tmpFile}" 2>/dev/null || aplay "${tmpFile}"`;
+          break;
+        case "win32":
+          // PowerShell MediaPlayer can handle most audio formats
+          cmd = `powershell -c "(New-Object Media.SoundPlayer '${tmpFile}').PlaySync()"`;
+          break;
+        default:
+          await cleanup();
+          return;
+      }
+
+      exec(cmd, { timeout: 10_000 }, (err) => {
+        void cleanup();
+        if (err) {
+          console.error("[OpenCode] System audio playback failed:", err.message);
+        }
+      });
+    } catch (err) {
+      console.error("[OpenCode] Failed to play audio data URI:", err);
+    }
   }
 }
