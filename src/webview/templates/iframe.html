@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; frame-src {{SERVER_URL}}; style-src 'unsafe-inline'; script-src 'unsafe-inline';"
+      content="default-src 'none'; frame-src {{SERVER_URL}}; media-src {{SERVER_URL}}; style-src 'unsafe-inline'; script-src 'unsafe-inline';"
     />
     <style>
       body {
@@ -26,7 +26,7 @@
   <body>
     <iframe
       src="{{SERVER_URL}}"
-      allow="clipboard-read; clipboard-write"
+      allow="clipboard-read; clipboard-write; autoplay"
     ></iframe>
     <script>
       (function () {
