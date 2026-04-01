@@ -1,16 +1,78 @@
 import * as http from "http";
 import * as net from "net";
 
-// ─── Keyboard Proxy ─────────────────────────────────────────────────
+// ─── Webview Proxy ──────────────────────────────────────────────────
 // A lightweight local HTTP proxy that sits between the webview iframe
 // and the OpenCode server.  It transparently forwards every request
-// but, for HTML responses, injects a small script that re-broadcasts
-// keyboard events to the parent webview so copy/paste/cut/selectAll
-// work even though the iframe is cross-origin to the webview.
+// but, for HTML responses, injects a small script that patches
+// cross-origin limitations: keyboard shortcuts (copy/paste/cut),
+// clipboard access, and audio playback (Web Audio API fallback).
 
-const KEYBOARD_SCRIPT = /*html*/ `
+const WEBVIEW_SCRIPT = /*html*/ `
 <script>
   (function () {
+    // ── Web Audio API fallback for VS Code webview autoplay restrictions ──
+    // Electron enforces strict autoplay: play() requires a user gesture.
+    // Notification sounds are triggered by server events (no gesture), so
+    // native Audio.play() fails with NotAllowedError.
+    //
+    // Fix: unlock an AudioContext on the first user interaction (click/key),
+    // then use it as a fallback when native play() is blocked. A resumed
+    // AudioContext stays unlocked and can play audio programmatically.
+    var _audioCtx = null;
+    var _audioUnlocked = false;
+
+    function getAudioCtx() {
+      if (!_audioCtx) {
+        _audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      return _audioCtx;
+    }
+
+    function unlockAudio() {
+      if (_audioUnlocked) return;
+      var ctx = getAudioCtx();
+      if (ctx.state === "suspended") {
+        ctx.resume().then(function () { _audioUnlocked = true; });
+      } else {
+        _audioUnlocked = true;
+      }
+    }
+    document.addEventListener("click", unlockAudio, true);
+    document.addEventListener("keydown", unlockAudio, true);
+    document.addEventListener("touchstart", unlockAudio, true);
+
+    function playViaWebAudio(src) {
+      var ctx = getAudioCtx();
+      var p = ctx.state === "suspended" ? ctx.resume() : Promise.resolve();
+      return p
+        .then(function () { return fetch(src); })
+        .then(function (r) { return r.arrayBuffer(); })
+        .then(function (buf) { return ctx.decodeAudioData(buf); })
+        .then(function (decoded) {
+          var source = ctx.createBufferSource();
+          source.buffer = decoded;
+          source.connect(ctx.destination);
+          source.start(0);
+        });
+    }
+
+    var OrigAudio = window.Audio;
+    window.Audio = function (src) {
+      var a = new OrigAudio(src);
+      var origPlay = a.play.bind(a);
+      a.play = function () {
+        return origPlay().catch(function (err) {
+          if (err.name === "NotAllowedError" && src) {
+            return playViaWebAudio(src);
+          }
+          throw err;
+        });
+      };
+      return a;
+    };
+    window.Audio.prototype = OrigAudio.prototype;
+
     // Override navigator.clipboard.writeText to relay through parent
     if (navigator.clipboard) {
       var origWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
@@ -123,7 +185,7 @@ const KEYBOARD_SCRIPT = /*html*/ `
 </script>
 `;
 
-export function startKeyboardProxy(
+export function startWebviewProxy(
   targetPort: number,
   proxyPort: number = 0,
 ): Promise<{ server: http.Server; port: number }> {
@@ -148,15 +210,15 @@ export function startKeyboardProxy(
           const ct = proxyRes.headers["content-type"] || "";
 
           if (ct.includes("text/html")) {
-            // Buffer the HTML so we can inject the keyboard script
+            // Buffer the HTML so we can inject the webview script
             let body = "";
             proxyRes.on("data", (chunk: Buffer) => {
               body += chunk.toString();
             });
             proxyRes.on("end", () => {
               body = body.includes("</head>")
-                ? body.replace("</head>", KEYBOARD_SCRIPT + "</head>")
-                : body + KEYBOARD_SCRIPT;
+                ? body.replace("</head>", WEBVIEW_SCRIPT + "</head>")
+                : body + WEBVIEW_SCRIPT;
 
               const outHeaders = { ...proxyRes.headers };
               outHeaders["content-length"] = Buffer.byteLength(body).toString();

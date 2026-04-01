@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { ChildProcess, spawn } from "child_process";
 import * as http from "http";
 import { OpencodeViewProvider } from "../webview/OpencodeViewProvider";
-import { startKeyboardProxy } from "../proxy/KeyboardProxy";
+import { startWebviewProxy } from "../proxy/WebviewProxy";
 
 export class ServerManager {
   private serverProcess: ChildProcess | undefined;
@@ -30,7 +30,7 @@ export class ServerManager {
       try {
         const parsed = new URL(serverUrl);
         const realPort = parseInt(parsed.port, 10);
-        const result = await startKeyboardProxy(realPort, proxyPort);
+        const result = await startWebviewProxy(realPort, proxyPort);
         this.proxyServer = result.server;
 
         if (result.port !== proxyPort) {
