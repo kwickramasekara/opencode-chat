@@ -22,8 +22,8 @@ export class ServerManager {
     }
 
     // Persist the port so we can reuse it next time (preserves iframe localStorage)
-    context.workspaceState.update("opencode.serverPort", port);
-    context.workspaceState.update("opencode.proxyPort", proxyPort);
+    context.globalState.update("opencode.serverPort", port);
+    context.globalState.update("opencode.proxyPort", proxyPort);
 
     // Helper: start the keyboard proxy and hand the proxied URL to the provider
     const serveViaProxy = async (serverUrl: string) => {
@@ -34,7 +34,7 @@ export class ServerManager {
         this.proxyServer = result.server;
 
         if (result.port !== proxyPort) {
-          context.workspaceState.update("opencode.proxyPort", result.port);
+          context.globalState.update("opencode.proxyPort", result.port);
         }
 
         parsed.port = result.port.toString();

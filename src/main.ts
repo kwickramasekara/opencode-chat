@@ -12,13 +12,14 @@ const SIDEBAR_CMDS = {
 export function activate(context: vscode.ExtensionContext) {
   // Reuse the port from the last session so the iframe origin stays the same
   // across restarts, preserving localStorage (theme, settings, etc.).
+  // Use globalState so every workspace shares the same origin and settings.
   // If no stored port, pick a random one and save it.
-  const storedPort = context.workspaceState.get<number>("opencode.serverPort");
+  const storedPort = context.globalState.get<number>("opencode.serverPort");
   const port =
     storedPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
 
   const storedProxyPort =
-    context.workspaceState.get<number>("opencode.proxyPort");
+    context.globalState.get<number>("opencode.proxyPort");
   const proxyPort =
     storedProxyPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
 
@@ -48,8 +49,8 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
-  // Restore cached sidebar type from workspace state
-  const cachedSidebarType = context.workspaceState.get<"primary" | "auxiliary">(
+  // Restore cached sidebar type from global state
+  const cachedSidebarType = context.globalState.get<"primary" | "auxiliary">(
     "opencode.sidebarType",
   );
   if (cachedSidebarType) {
@@ -70,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
 
       if (!provider.isViewVisible) {
         provider.sidebarType = tryFirst;
-        context.workspaceState.update("opencode.sidebarType", tryFirst);
+        context.globalState.update("opencode.sidebarType", tryFirst);
         return;
       }
 
@@ -79,7 +80,7 @@ export function activate(context: vscode.ExtensionContext) {
       const other = tryFirst === "auxiliary" ? "primary" : "auxiliary";
       await vscode.commands.executeCommand(SIDEBAR_CMDS[other]);
       provider.sidebarType = other;
-      context.workspaceState.update("opencode.sidebarType", other);
+      context.globalState.update("opencode.sidebarType", other);
     }),
   );
 
