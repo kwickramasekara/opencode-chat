@@ -13,6 +13,7 @@ export class ServerManager {
     context: vscode.ExtensionContext,
     port: number,
     proxyPort: number,
+    exposeToNetwork: boolean = false,
   ): Promise<void> {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
@@ -61,18 +62,19 @@ export class ServerManager {
     }
 
     try {
-      this.serverProcess = spawn(
-        "opencode",
-        ["serve", "--port", port.toString()],
-        {
-          cwd,
-          stdio: "pipe",
-          env: {
-            ...process.env,
-            OPENCODE_CALLER: "vscode",
-          },
+      const args = ["serve", "--port", port.toString()];
+      if (exposeToNetwork) {
+        args.push("--mdns");
+      }
+
+      this.serverProcess = spawn("opencode", args, {
+        cwd,
+        stdio: "pipe",
+        env: {
+          ...process.env,
+          OPENCODE_CALLER: "vscode",
         },
-      );
+      });
 
       let resolved = false;
 

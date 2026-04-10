@@ -10,18 +10,25 @@ const SIDEBAR_CMDS = {
 } as const;
 
 export function activate(context: vscode.ExtensionContext) {
-  // Reuse the port from the last session so the iframe origin stays the same
-  // across restarts, preserving localStorage (theme, settings, etc.).
+  const config = vscode.workspace.getConfiguration("opencode");
+
+  // If the user specified a port in settings, use it. Otherwise reuse the
+  // port from the last session so the iframe origin stays the same across
+  // restarts, preserving localStorage (theme, settings, etc.).
   // Use globalState so every workspace shares the same origin and settings.
-  // If no stored port, pick a random one and save it.
+  const userPort = config.get<number>("port", 0);
   const storedPort = context.globalState.get<number>("opencode.serverPort");
   const port =
-    storedPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
+    userPort > 0
+      ? userPort
+      : (storedPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384);
 
   const storedProxyPort =
     context.globalState.get<number>("opencode.proxyPort");
   const proxyPort =
     storedProxyPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
+
+  const exposeToNetwork = config.get<boolean>("exposeToNetwork", false);
 
   // Register the webview panel provider
   const provider = new OpencodeViewProvider(context.extensionUri);
@@ -33,7 +40,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Start the opencode server
   serverManager = new ServerManager();
-  serverManager.start(provider, context, port, proxyPort);
+  serverManager.start(provider, context, port, proxyPort, exposeToNetwork);
 
   // Register the opencode.addToChat command
   context.subscriptions.push(
@@ -87,10 +94,50 @@ export function activate(context: vscode.ExtensionContext) {
   // Register the restart command to kill the server and start fresh
   context.subscriptions.push(
     vscode.commands.registerCommand("opencode.restart", () => {
+      const restartConfig = vscode.workspace.getConfiguration("opencode");
+      const restartUserPort = restartConfig.get<number>("port", 0);
+      const restartPort =
+        restartUserPort > 0
+          ? restartUserPort
+          : (context.globalState.get<number>("opencode.serverPort") ?? port);
+      const restartProxyPort =
+        context.globalState.get<number>("opencode.proxyPort") ?? proxyPort;
+      const restartExposeToNetwork = restartConfig.get<boolean>(
+        "exposeToNetwork",
+        false,
+      );
+
       serverManager?.dispose();
       provider.setLoading();
       serverManager = new ServerManager();
-      serverManager.start(provider, context, port, proxyPort);
+      serverManager.start(
+        provider,
+        context,
+        restartPort,
+        restartProxyPort,
+        restartExposeToNetwork,
+      );
+    }),
+  );
+
+  // Prompt the user to restart when relevant settings change
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (
+        e.affectsConfiguration("opencode.port") ||
+        e.affectsConfiguration("opencode.exposeToNetwork")
+      ) {
+        vscode.window
+          .showInformationMessage(
+            "opencode settings changed. Restart to apply?",
+            "Restart",
+          )
+          .then((choice) => {
+            if (choice === "Restart") {
+              vscode.commands.executeCommand("opencode.restart");
+            }
+          });
+      }
     }),
   );
 }

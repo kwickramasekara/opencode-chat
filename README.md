@@ -12,6 +12,7 @@ Unofficial extension that integrates the webview of opencode chat into your IDE.
 - **Add to Chat Commands**: Easily add files to the chat context by right-clicking in the explorer or using the editor title bar context menu.
 - **Seamless Clipboard Support**: Overcomes typical webview iframe limitations to provide full copy, cut, and paste functionality (including image pasting) within the chat.
 - **Persistent Sessions**: Saves your session, port, and user preferences across VS Code restarts.
+- **Local Network Access**: Enable the `opencode.exposeToNetwork` setting to access the same opencode instance from your mobile device or any other device on the same network at `http://opencode.local:<port>`.
 
 Note: requires opencode CLI to be installed. See https://opencode.ai/
 

@@ -61,6 +61,23 @@
           "name": "Chat"
         }
       ]
+    },
+    "configuration": {
+      "title": "opencode",
+      "properties": {
+        "opencode.port": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Fixed port for the opencode server. Set to 0 (default) to use a random port. Note: changing the port resets preferences stored in the webview (e.g. theme) since they are tied to the origin."
+        },
+        "opencode.exposeToNetwork": {
+          "type": "boolean",
+          "default": false,
+          "description": "Expose the opencode server to the local network via mDNS. When enabled, you can access the same instance from another device at http://opencode.local:<port>."
+        }
+      }
     }
   },
   "scripts": {
