@@ -56,6 +56,31 @@ export function activate(context: vscode.ExtensionContext) {
     ),
   );
 
+  // Register the opencode.addSelectionToChat command
+  context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.addSelectionToChat", () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) return;
+
+      const sel = editor.selection;
+      const relativePath = vscode.workspace.asRelativePath(editor.document.uri);
+
+      let ref: string;
+      if (sel.isEmpty) {
+        // Cursor only — just line number
+        ref = `${relativePath}:${sel.start.line + 1}`;
+      } else if (sel.start.line === sel.end.line) {
+        // Single line selection — file:line:startCol-endCol
+        ref = `${relativePath}:${sel.start.line + 1}:${sel.start.character + 1}-${sel.end.character + 1}`;
+      } else {
+        // Multi-line selection — file:startLine:startCol-endLine:endCol
+        ref = `${relativePath}:${sel.start.line + 1}:${sel.start.character + 1}-${sel.end.line + 1}:${sel.end.character + 1}`;
+      }
+
+      provider.addToChat(ref);
+    }),
+  );
+
   // Restore cached sidebar type from global state
   const cachedSidebarType = context.globalState.get<"primary" | "auxiliary">(
     "opencode.sidebarType",
