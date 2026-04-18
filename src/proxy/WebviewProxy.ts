@@ -180,13 +180,24 @@ const WEBVIEW_SCRIPT = /*html*/ `
     window.Audio.prototype = OrigAudio.prototype;
 
     // Override navigator.clipboard.writeText to relay through parent
-    if (navigator.clipboard) {
-      var origWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
-      navigator.clipboard.writeText = function (text) {
-        window.parent.postMessage({ type: "copy-request", text: text }, "*");
-        return Promise.resolve();
-      };
+    // In some VS Code workspace configurations, navigator.clipboard may be
+    // undefined (non-secure context). Create a polyfill so copy still works
+    // by relaying through the extension host.
+    if (!navigator.clipboard) {
+      Object.defineProperty(navigator, "clipboard", {
+        value: {
+          writeText: function () { return Promise.resolve(); },
+          readText: function () { return Promise.resolve(""); },
+        },
+        writable: true,
+        configurable: true,
+      });
     }
+    var origWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
+    navigator.clipboard.writeText = function (text) {
+      window.parent.postMessage({ type: "copy-request", text: text }, "*");
+      return Promise.resolve();
+    };
 
     document.addEventListener("keydown", function (e) {
       var mod = e.metaKey || e.ctrlKey;
