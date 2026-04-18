@@ -26,11 +26,27 @@ export class ServerManager {
     context.globalState.update("opencode.serverPort", port);
     context.globalState.update("opencode.proxyPort", proxyPort);
 
-    // Helper: start the keyboard proxy and hand the proxied URL to the provider
+    // Helper: start the keyboard proxy and hand the proxied URL to the provider.
+    // If another VS Code window already owns the proxy on the stored port we
+    // reuse it instead of spinning up a second proxy (which would land on a
+    // different port → different origin → lost localStorage preferences).
     const serveViaProxy = async (serverUrl: string) => {
       try {
         const parsed = new URL(serverUrl);
         const realPort = parseInt(parsed.port, 10);
+
+        // Check whether the proxy from another window is still alive.
+        if (
+          proxyPort > 0 &&
+          (await this.isServerAlive(`http://localhost:${proxyPort}`))
+        ) {
+          // Proxy already running — just reuse it (no new server to track).
+          parsed.port = proxyPort.toString();
+          parsed.pathname = `/${Buffer.from(cwd).toString("base64url")}`;
+          provider.setServerUrl(parsed.toString());
+          return;
+        }
+
         const result = await startWebviewProxy(realPort, proxyPort);
         this.proxyServer = result.server;
 
