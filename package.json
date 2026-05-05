@@ -12,7 +12,9 @@
     "Other"
   ],
   "icon": "icon.png",
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/main.js",
   "contributes": {
     "commands": [
@@ -79,10 +81,10 @@
       "properties": {
         "opencode.port": {
           "type": "number",
-          "default": 0,
+          "default": 4096,
           "minimum": 0,
           "maximum": 65535,
-          "description": "Fixed port for the opencode server. Set to 0 (default) to use a random port. Note: changing the port resets preferences stored in the webview (e.g. theme) since they are tied to the origin."
+          "description": "Fixed port for the opencode server. Set to 0 to use a random port. Note: changing the port resets preferences stored in the webview (e.g. theme) since they are tied to the origin."
         },
         "opencode.exposeToNetwork": {
           "type": "boolean",
@@ -93,7 +95,7 @@
     }
   },
   "scripts": {
-    "copy-templates": "mkdir -p out/webview/templates && cp src/webview/templates/*.html out/webview/templates/",
+    "copy-templates": "node scripts/copy-templates.js",
     "compile": "tsc -p ./ && npm run copy-templates",
     "publish": "npm run compile && vsce publish && ovsx publish",
     "watch": "npm run copy-templates && tsc -w -p ./"

@@ -8,7 +8,7 @@ import * as net from "net";
 // cross-origin limitations: keyboard shortcuts (copy/paste/cut),
 // clipboard access, and audio playback (Web Audio API fallback).
 
-const WEBVIEW_SCRIPT = /*html*/ `
+const WEBVIEW_SCRIPT = /*html*/ String.raw`
 <script>
   (function () {
     // ── Web Audio API fallback for VS Code webview autoplay restrictions ──
@@ -59,6 +59,95 @@ const WEBVIEW_SCRIPT = /*html*/ `
       for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
       return buf.buffer;
     }
+
+    function decodeBase64Url(value) {
+      if (!value) return null;
+      var base64 = value.replace(/-/g, "+").replace(/_/g, "/");
+      while (base64.length % 4) base64 += "=";
+
+      try {
+        var bin = atob(base64);
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return new TextDecoder("utf-8").decode(bytes);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    function currentDirectoryFromPath() {
+      var slug = location.pathname.replace(/^\/+/, "").split("/")[0];
+      if (!slug) return null;
+
+      var dir = decodeBase64Url(slug);
+      if (!dir) return null;
+
+      if (!/^[A-Za-z]:[\\/]/.test(dir) && !dir.startsWith("/") && !dir.startsWith("\\\\")) {
+        return null;
+      }
+
+      return dir;
+    }
+
+    function normalizeWindowsPath(value) {
+      if (!value) return value;
+      if (/^[A-Za-z]:[\\/]/.test(value) || value.indexOf("\\\\") === 0) {
+        return value.replace(/\//g, "\\");
+      }
+      return value;
+    }
+
+    function seedDeepLink() {
+      var defaultServerUrl = __OPENCODE_DEFAULT_SERVER_URL__;
+      if (defaultServerUrl) {
+        try {
+          var directUrl = defaultServerUrl.replace(/\/+$/, "");
+          var proxyUrl = location.origin.replace(/\/+$/, "");
+          localStorage.setItem("opencode.settings.dat:defaultServerUrl", defaultServerUrl);
+
+          var serverKey = "opencode.global.dat:server";
+          var state = JSON.parse(localStorage.getItem(serverKey) || "{}");
+          var list = Array.isArray(state.list) ? state.list : [];
+          var shouldDropServer = function (url) {
+            if (!url) return false;
+            var value = url.replace(/\/+$/, "");
+            if (value === directUrl) return false;
+            if (value === proxyUrl) return true;
+            try {
+              var parsed = new URL(value);
+              return parsed.hostname === "localhost" || parsed.hostname === "127.0.0.1";
+            } catch (e) {
+              return false;
+            }
+          };
+          list = list.filter(function (server) {
+            var url = typeof server === "string" ? server : server && server.http && server.http.url;
+            return !shouldDropServer(url);
+          });
+          if (!list.some(function (server) {
+            var url = typeof server === "string" ? server : server && server.http && server.http.url;
+            return url && url.replace(/\/+$/, "") === directUrl;
+          })) {
+            list.unshift({ type: "http", http: { url: directUrl } });
+          }
+          state.list = list;
+          localStorage.setItem(serverKey, JSON.stringify(state));
+        } catch (e) {}
+      }
+
+      var dir = normalizeWindowsPath(currentDirectoryFromPath());
+      if (!dir) return;
+
+      var openProjectLink = "opencode://open-project?directory=" + encodeURIComponent(dir);
+      var newSessionLink = "opencode://new-session?directory=" + encodeURIComponent(dir);
+      window.__OPENCODE__ = window.__OPENCODE__ || {};
+      var pending = window.__OPENCODE__.deepLinks || [];
+      if (pending.indexOf(openProjectLink) === -1) pending.push(openProjectLink);
+      if (pending.indexOf(newSessionLink) === -1) pending.push(newSessionLink);
+      window.__OPENCODE__.deepLinks = pending;
+    }
+
+    seedDeepLink();
 
     function getAudioBuffer(src) {
       if (src.indexOf("data:") === 0) {
@@ -305,8 +394,55 @@ const WEBVIEW_SCRIPT = /*html*/ `
 export function startWebviewProxy(
   targetPort: number,
   proxyPort: number = 0,
+  defaultServerUrl?: string,
 ): Promise<{ server: http.Server; port: number }> {
   return new Promise((resolve, reject) => {
+    const webviewScript = WEBVIEW_SCRIPT.replace(
+      "__OPENCODE_DEFAULT_SERVER_URL__",
+      JSON.stringify(defaultServerUrl ?? ""),
+    );
+    const patchedServerUrl = JSON.stringify(defaultServerUrl ?? "");
+
+    const patchScriptBody = (body: string) => {
+      if (!defaultServerUrl) return body;
+      return body.replace(
+        /location\.hostname\.includes\("opencode\.ai"\)\?"http:\/\/localhost:\d+":location\.origin/g,
+        patchedServerUrl,
+      );
+    };
+
+    const sendBuffered = (
+      res: http.ServerResponse,
+      proxyRes: http.IncomingMessage,
+      body: string,
+      removeCsp = false,
+    ) => {
+      const headers: http.OutgoingHttpHeaders = { ...proxyRes.headers };
+      headers["content-length"] = Buffer.byteLength(body).toString();
+      delete headers["content-encoding"];
+
+      if (removeCsp) {
+        delete headers["content-security-policy"];
+        delete headers["content-security-policy-report-only"];
+      }
+
+      res.writeHead(proxyRes.statusCode || 200, headers);
+      res.end(body);
+    };
+
+    const bufferResponse = (
+      proxyRes: http.IncomingMessage,
+      res: http.ServerResponse,
+      transform: (body: string) => string,
+      removeCsp = false,
+    ) => {
+      let body = "";
+      proxyRes.on("data", (chunk: Buffer) => {
+        body += chunk.toString();
+      });
+      proxyRes.on("end", () => sendBuffered(res, proxyRes, transform(body), removeCsp));
+    };
+
     const server = http.createServer((req, res) => {
       // Strip accept-encoding so we get an uncompressed body to inject into
       const headers: Record<string, string | string[] | undefined> = {
@@ -324,29 +460,19 @@ export function startWebviewProxy(
           headers,
         },
         (proxyRes) => {
-          const ct = proxyRes.headers["content-type"] || "";
+          const ct = String(proxyRes.headers["content-type"] || "");
 
           if (ct.includes("text/html")) {
-            // Buffer the HTML so we can inject the webview script
-            let body = "";
-            proxyRes.on("data", (chunk: Buffer) => {
-              body += chunk.toString();
-            });
-            proxyRes.on("end", () => {
-              body = body.includes("</head>")
-                ? body.replace("</head>", WEBVIEW_SCRIPT + "</head>")
-                : body + WEBVIEW_SCRIPT;
-
-              const outHeaders = { ...proxyRes.headers };
-              outHeaders["content-length"] = Buffer.byteLength(body).toString();
-              delete outHeaders["content-encoding"];
-              // Remove upstream CSP so our injected script can run
-              delete outHeaders["content-security-policy"];
-              delete outHeaders["content-security-policy-report-only"];
-
-              res.writeHead(proxyRes.statusCode || 200, outHeaders);
-              res.end(body);
-            });
+            bufferResponse(
+              proxyRes,
+              res,
+              (body) => body.includes("</head>")
+                ? body.replace("</head>", webviewScript + "</head>")
+                : body + webviewScript,
+              true,
+            );
+          } else if (ct.includes("javascript")) {
+            bufferResponse(proxyRes, res, patchScriptBody);
           } else {
             // Non-HTML: pipe through untouched
             res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);

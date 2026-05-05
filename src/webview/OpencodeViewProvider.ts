@@ -3,14 +3,13 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { exec } from "child_process";
+import { log, logError } from "../logger";
 
 export class OpencodeViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _serverUrl?: string;
   private _error?: { message: string; showInstallHint: boolean };
   private _sidebarType: "primary" | "auxiliary" | null = null;
-
-  constructor(private readonly _extensionUri: vscode.Uri) {}
 
   get isViewVisible(): boolean {
     return !!this._view?.visible;
@@ -25,13 +24,13 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
+    log("OpencodeViewProvider.resolveWebviewView()");
     this._view = webviewView;
 
     webviewView.webview.options = {
       enableScripts: true,
     };
 
-    // Handle paste requests relayed from the iframe through the webview script
     webviewView.webview.onDidReceiveMessage(async (message) => {
       if (message.type === "paste-request") {
         const text = await vscode.env.clipboard.readText();
@@ -49,6 +48,7 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
   }
 
   setServerUrl(url: string) {
+    log("OpencodeViewProvider.setServerUrl()");
     this._serverUrl = url;
     this._error = undefined;
     this._renderCurrentState();
@@ -61,12 +61,14 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
   }
 
   setError(message: string, showInstallHint = true) {
+    log(`OpencodeViewProvider.setError: "${message}" (installHint=${showInstallHint})`);
     this._error = { message, showInstallHint };
     this._serverUrl = undefined;
     this._renderCurrentState();
   }
 
   setLoading() {
+    log("OpencodeViewProvider.setLoading()");
     this._serverUrl = undefined;
     this._error = undefined;
     this._renderCurrentState();
@@ -164,12 +166,10 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
 
       exec(cmd, { timeout: 10_000 }, (err) => {
         void cleanup();
-        if (err) {
-          console.error("[OpenCode] System audio playback failed:", err.message);
-        }
+        if (err) logError("System audio playback failed", err);
       });
     } catch (err) {
-      console.error("[OpenCode] Failed to play audio data URI:", err);
+      logError("Failed to play audio data URI", err);
     }
   }
 }

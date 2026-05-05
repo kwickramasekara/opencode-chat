@@ -1,166 +1,186 @@
 import * as vscode from "vscode";
 import { ChildProcess, spawn } from "child_process";
 import * as http from "http";
-import { OpencodeViewProvider } from "../webview/OpencodeViewProvider";
+import { log, logError } from "../logger";
 import { startWebviewProxy } from "../proxy/WebviewProxy";
+import { OpencodeViewProvider } from "../webview/OpencodeViewProvider";
+
+type StartOptions = {
+  provider: OpencodeViewProvider;
+  context: vscode.ExtensionContext;
+  cwd: string;
+  port: number;
+  proxyPort: number;
+  exposeToNetwork: boolean;
+  fixedPort: boolean;
+};
 
 export class ServerManager {
   private serverProcess: ChildProcess | undefined;
   private proxyServer: http.Server | undefined;
 
-  async start(
-    provider: OpencodeViewProvider,
-    context: vscode.ExtensionContext,
-    port: number,
-    proxyPort: number,
-    exposeToNetwork: boolean = false,
-  ): Promise<void> {
-    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  async start(options: StartOptions): Promise<void> {
+    const serverUrl = `http://localhost:${options.port}`;
+    log(`ServerManager.start: cwd="${options.cwd}"`);
 
-    if (!cwd) {
-      provider.setError("No workspace folder open.", false);
+    if (await this.isServerAlive(serverUrl)) {
+      log(`Using OpenCode server: ${serverUrl}`);
+      await this.openInWebview(options, serverUrl);
       return;
     }
 
-    // Persist the port so we can reuse it next time (preserves iframe localStorage)
-    context.globalState.update("opencode.serverPort", port);
-    context.globalState.update("opencode.proxyPort", proxyPort);
-
-    // Helper: start the keyboard proxy and hand the proxied URL to the provider.
-    // If another VS Code window already owns the proxy on the stored port we
-    // reuse it instead of spinning up a second proxy (which would land on a
-    // different port → different origin → lost localStorage preferences).
-    const serveViaProxy = async (serverUrl: string) => {
-      try {
-        const parsed = new URL(serverUrl);
-        const realPort = parseInt(parsed.port, 10);
-
-        // Check whether the proxy from another window is still alive.
-        if (
-          proxyPort > 0 &&
-          (await this.isServerAlive(`http://localhost:${proxyPort}`))
-        ) {
-          // Proxy already running — just reuse it (no new server to track).
-          parsed.port = proxyPort.toString();
-          parsed.pathname = `/${Buffer.from(cwd).toString("base64url")}`;
-          provider.setServerUrl(parsed.toString());
-          return;
-        }
-
-        const result = await startWebviewProxy(realPort, proxyPort);
-        this.proxyServer = result.server;
-
-        if (result.port !== proxyPort) {
-          context.globalState.update("opencode.proxyPort", result.port);
-        }
-
-        parsed.port = result.port.toString();
-        parsed.pathname = `/${Buffer.from(cwd).toString("base64url")}`;
-        provider.setServerUrl(parsed.toString());
-      } catch {
-        // Fallback: serve without proxy
-        try {
-          const u = new URL(serverUrl);
-          u.pathname = `/${Buffer.from(cwd).toString("base64url")}`;
-          provider.setServerUrl(u.toString());
-        } catch {
-          provider.setServerUrl(serverUrl);
-        }
-      }
-    };
-
-    // Check if a server from the previous session is still running on this port.
-    // If so, just reuse it instead of spawning a new one.
-    const existingUrl = `http://localhost:${port}`;
-    if (await this.isServerAlive(existingUrl)) {
-      await serveViaProxy(existingUrl);
-      return;
-    }
-
-    try {
-      const args = ["serve", "--port", port.toString()];
-      if (exposeToNetwork) {
-        args.push("--mdns");
-      }
-
-      this.serverProcess = spawn("opencode", args, {
-        cwd,
-        stdio: "pipe",
-        env: {
-          ...process.env,
-          OPENCODE_CALLER: "vscode",
-        },
-      });
-
-      let resolved = false;
-
-      const onUrl = (url: string) => {
-        if (resolved) return;
-        resolved = true;
-        serveViaProxy(url);
-      };
-
-      // Parse stdout/stderr for the server URL
-      const handleOutput = (data: Buffer) => {
-        const output = data.toString();
-        const match = output.match(/https?:\/\/[^\s]+/);
-        if (match) onUrl(match[0]);
-      };
-
-      this.serverProcess.stdout?.on("data", handleOutput);
-      this.serverProcess.stderr?.on("data", handleOutput);
-
-      this.serverProcess.on("error", (err) => {
-        if (resolved) return;
-        resolved = true;
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          provider.setError("Could not find the <code>opencode</code> CLI.");
-        } else {
-          provider.setError(`Failed to start server: ${err.message}`);
-        }
-      });
-
-      this.serverProcess.on("exit", (code) => {
-        if (code !== null && code !== 0) {
-          if (!resolved) {
-            resolved = true;
-            provider.setError(
-              `OpenCode server exited with code ${code}. Check that your opencode installation is working.`,
-            );
-          }
-        }
-      });
-
-      // Fallback: if we don't see a URL in stdout after 5s, just try the expected URL
-      setTimeout(() => {
-        onUrl(`http://localhost:${port}`);
-      }, 5000);
-    } catch {
-      provider.setError("Failed to start the OpenCode server.");
-    }
+    await this.spawnServer(options, serverUrl);
   }
 
   dispose(): void {
+    log("ServerManager.dispose()");
+
     if (this.proxyServer) {
       this.proxyServer.close();
       this.proxyServer = undefined;
     }
+
     if (this.serverProcess) {
+      log(`Killing OpenCode process (PID=${this.serverProcess.pid})`);
       this.serverProcess.kill();
       this.serverProcess = undefined;
     }
   }
 
-  // Quick health check to see if a server from a previous session is still alive.
-  private async isServerAlive(url: string): Promise<boolean> {
+  private async spawnServer(options: StartOptions, expectedUrl: string): Promise<void> {
+    const args = ["serve", "--port", options.port.toString()];
+    if (options.exposeToNetwork) args.push("--mdns");
+
+    log(`Spawning: opencode ${args.join(" ")} (cwd=${options.cwd})`);
+
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 1000);
-      const res = await fetch(url, { signal: controller.signal });
-      clearTimeout(timeout);
+      this.serverProcess = spawn("opencode", args, {
+        cwd: options.cwd,
+        stdio: "pipe",
+        env: { ...process.env, OPENCODE_CALLER: "vscode" },
+      });
+    } catch (err) {
+      logError("Failed to spawn OpenCode", err);
+      options.provider.setError("Failed to start the OpenCode server.");
+      return;
+    }
+
+    log(`OpenCode process spawned, PID=${this.serverProcess.pid}`);
+    let resolved = false;
+
+    const resolveServer = async (url: string) => {
+      if (resolved) return;
+      resolved = true;
+
+      if (options.fixedPort && new URL(url).port !== String(options.port)) {
+        log(`Ignoring unexpected OpenCode port from child process: ${url}`);
+        if (await this.waitUntilAlive(expectedUrl)) {
+          this.serverProcess?.kill();
+          this.serverProcess = undefined;
+          await this.openInWebview(options, expectedUrl);
+          return;
+        }
+
+        this.serverProcess?.kill();
+        this.serverProcess = undefined;
+        options.provider.setError(`OpenCode did not start on the configured port ${options.port}.`, false);
+        return;
+      }
+
+      await this.openInWebview(options, options.fixedPort ? expectedUrl : url);
+    };
+
+    const handleOutput = (data: Buffer) => {
+      const match = data.toString().match(/https?:\/\/[^\s]+/);
+      if (match) void resolveServer(match[0]);
+    };
+
+    this.serverProcess.stdout?.on("data", handleOutput);
+    this.serverProcess.stderr?.on("data", handleOutput);
+
+    this.serverProcess.on("error", (err) => {
+      if (resolved) return;
+      resolved = true;
+      logError("OpenCode process error", err);
+
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        options.provider.setError("Could not find the <code>opencode</code> CLI.");
+      } else {
+        options.provider.setError(`Failed to start server: ${err.message}`);
+      }
+    });
+
+    this.serverProcess.on("exit", async (code) => {
+      log(`OpenCode process exited with code ${code}`);
+      if (resolved || code === null || code === 0) return;
+
+      if (options.fixedPort && (await this.waitUntilAlive(expectedUrl))) {
+        resolved = true;
+        await this.openInWebview(options, expectedUrl);
+        return;
+      }
+
+      resolved = true;
+      options.provider.setError(
+        `OpenCode server exited with code ${code}. Check that your opencode installation is working.`,
+      );
+    });
+
+    setTimeout(() => void resolveServer(expectedUrl), 5000);
+  }
+
+  private async openInWebview(options: StartOptions, serverUrl: string): Promise<void> {
+    const workspacePath = `/${Buffer.from(options.cwd).toString("base64url")}`;
+    const directServerUrl = `http://localhost:${options.port}`;
+
+    try {
+      const parsed = new URL(serverUrl);
+      const targetPort = Number(parsed.port);
+
+      log("Starting VS Code webview bridge");
+      const proxy = await startWebviewProxy(targetPort, options.proxyPort, directServerUrl);
+      this.proxyServer = proxy.server;
+
+      if (proxy.port !== options.proxyPort) {
+        options.context.globalState.update("opencode.proxyPort", proxy.port);
+      }
+
+      parsed.port = proxy.port.toString();
+      parsed.pathname = workspacePath;
+      options.provider.setServerUrl(parsed.toString());
+    } catch (err) {
+      logError("VS Code webview bridge failed", err);
+      const fallback = new URL(serverUrl);
+      fallback.pathname = workspacePath;
+      options.provider.setServerUrl(fallback.toString());
+    }
+  }
+
+  private async waitUntilAlive(url: string): Promise<boolean> {
+    const deadline = Date.now() + 5000;
+    while (Date.now() < deadline) {
+      if (await this.isServerAlive(url, false)) return true;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    return false;
+  }
+
+  private async isServerAlive(url: string, logResult = true): Promise<boolean> {
+    const healthUrl = new URL("/global/health", url).toString();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const res = await fetch(healthUrl, { signal: controller.signal });
+      if (logResult) log(`isServerAlive(${healthUrl}) = ${res.ok} (status=${res.status})`);
       return res.ok;
-    } catch {
+    } catch (err) {
+      if (logResult) {
+        log(`isServerAlive(${healthUrl}) = false (${err instanceof Error ? err.message : String(err)})`);
+      }
       return false;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }

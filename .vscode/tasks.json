@@ -1,0 +1,12 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "copy-templates",
+      "group": "build",
+      "label": "npm: copy-templates",
+      "detail": "Copy HTML templates to out/"
+    }
+  ]
+}
