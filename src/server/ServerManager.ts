@@ -26,6 +26,16 @@ export class ServerManager {
     context.globalState.update("opencode.serverPort", port);
     context.globalState.update("opencode.proxyPort", proxyPort);
 
+    const workspacePath = `/${Buffer.from(cwd).toString("base64url")}`;
+
+    const setWebviewServerUrl = async (url: URL) => {
+      url.pathname = workspacePath;
+      const externalUri = await vscode.env.asExternalUri(
+        vscode.Uri.parse(url.toString()),
+      );
+      provider.setServerUrl(externalUri.toString());
+    };
+
     // Helper: start the keyboard proxy and hand the proxied URL to the provider.
     // If another VS Code window already owns the proxy on the stored port we
     // reuse it instead of spinning up a second proxy (which would land on a
@@ -41,9 +51,9 @@ export class ServerManager {
           (await this.isServerAlive(`http://localhost:${proxyPort}`))
         ) {
           // Proxy already running — just reuse it (no new server to track).
-          parsed.port = proxyPort.toString();
-          parsed.pathname = `/${Buffer.from(cwd).toString("base64url")}`;
-          provider.setServerUrl(parsed.toString());
+          await setWebviewServerUrl(
+            new URL(`http://localhost:${proxyPort}`),
+          );
           return;
         }
 
@@ -54,15 +64,15 @@ export class ServerManager {
           context.globalState.update("opencode.proxyPort", result.port);
         }
 
-        parsed.port = result.port.toString();
-        parsed.pathname = `/${Buffer.from(cwd).toString("base64url")}`;
-        provider.setServerUrl(parsed.toString());
+        await setWebviewServerUrl(new URL(`http://localhost:${result.port}`));
       } catch {
         // Fallback: serve without proxy
         try {
           const u = new URL(serverUrl);
-          u.pathname = `/${Buffer.from(cwd).toString("base64url")}`;
-          provider.setServerUrl(u.toString());
+          if (u.hostname === "0.0.0.0" || u.hostname === "::") {
+            u.hostname = "localhost";
+          }
+          await setWebviewServerUrl(u);
         } catch {
           provider.setServerUrl(serverUrl);
         }

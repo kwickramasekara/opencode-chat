@@ -102,10 +102,14 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
   }
 
   private _getIframeHtml(serverUrl: string): string {
-    return this._readTemplate("iframe.html").replaceAll(
-      "{{SERVER_URL}}",
-      serverUrl,
-    );
+    let serverOrigin = serverUrl;
+    try {
+      serverOrigin = new URL(serverUrl).origin;
+    } catch {}
+
+    return this._readTemplate("iframe.html")
+      .replaceAll("{{SERVER_URL}}", serverUrl)
+      .replaceAll("{{SERVER_ORIGIN}}", serverOrigin);
   }
 
   private _getErrorHtml(message: string, showInstallHint: boolean): string {
