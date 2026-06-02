@@ -6,6 +6,8 @@ Add a normal VS Code editor-tab mode for the opencode chat extension while prese
 
 Users should be able to open multiple opencode chat tabs, move them between editor groups, open one beside another, and use them similarly to browser tabs or VS Code terminal tabs.
 
+Related parallel work for the same branch is tracked separately in [`2026-06-02-output-channel-diagnostics.md`](./2026-06-02-output-channel-diagnostics.md).
+
 ```text
 VS Code editor area
   ├─ opencode tab A ─┐
@@ -159,7 +161,7 @@ Add editor-mode commands while keeping existing commands.
 | `opencode.openChatBeside` | Open a new opencode editor tab beside the current editor. |
 | `opencode.toggleChatViewInPanelOrSidebar` | Keep existing sidebar/auxiliary toggle behavior. |
 | `opencode.restart` | Restart the shared server/proxy and refresh every sidebar/panel host. |
-| `opencode.addToChat` | Send file reference to the selected opencode host; start a sidebar chat if no host exists. |
+| `opencode.addToChat` | Send file reference to the selected opencode host; show a notification and do nothing if no host exists. |
 | `opencode.addSelectionToChat` | Same target behavior as `opencode.addToChat`, with selection reference text. |
 
 Targeting priority for add-to-chat:
@@ -285,7 +287,7 @@ Cons:
 - All opencode hosts share one server/proxy by default.
 - Closing one editor tab does not stop the shared server.
 - Restart shows loading/error/ready state across all open hosts.
-- Add-to-chat targets the active/recent opencode host predictably, prompts when multiple hosts are running, andand prints notification when none is running.
+- Add-to-chat targets the active/recent opencode host predictably, prompts when multiple hosts are running, and prints notification when none is running.
 - Editor layout uses available editor width instead of the sidebar width cap.
 
 ## Verification Plan
@@ -302,7 +304,7 @@ Manual checks in VS Code Extension Development Host:
 4. Move/split editor groups using VS Code UI.
 5. Open different chats in different tabs and verify they remain visually independent.
 6. Open the same chat in two tabs and verify live message updates appear in both.
-7. Use add-file/add-selection commands and verify direct, prompted, and no-host sidebar-start targeting behavior.
+7. Use add-file/add-selection commands and verify direct, prompted, and no-host notification/noop behavior.
 8. Restart opencode and verify every open host recovers or shows the same error.
 9. Reload the VS Code window and verify persisted settings/history behavior is acceptable.
 

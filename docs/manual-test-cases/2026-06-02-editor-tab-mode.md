@@ -51,7 +51,7 @@ Check:
 
 Given no opencode sidebar view or editor panel is running,
 when you run `opencode.addToChat` or `opencode.addSelectionToChat`,
-than the notification appears and nothing else happens.
+then the notification appears and nothing else happens.
 
 ### 6. Restart refreshes all hosts
 
