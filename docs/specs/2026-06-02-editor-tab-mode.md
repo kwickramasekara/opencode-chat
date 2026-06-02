@@ -157,19 +157,31 @@ Add editor-mode commands while keeping existing commands.
 | --- | --- |
 | `opencode.openChat` | Open a new opencode editor tab in the active editor group. |
 | `opencode.openChatBeside` | Open a new opencode editor tab beside the current editor. |
-| `opencode.toggleChatView` | Keep existing sidebar/auxiliary toggle behavior. |
+| `opencode.toggleChatViewInPanelOrSidebar` | Keep existing sidebar/auxiliary toggle behavior. |
 | `opencode.restart` | Restart the shared server/proxy and refresh every sidebar/panel host. |
-| `opencode.addToChat` | Send file reference to active/recent opencode host; open a panel if none exists. |
+| `opencode.addToChat` | Send file reference to the selected opencode host; start a sidebar chat if no host exists. |
 | `opencode.addSelectionToChat` | Same target behavior as `opencode.addToChat`, with selection reference text. |
 
 Targeting priority for add-to-chat:
 
 ```text
-active opencode editor panel
-  else visible sidebar view
-  else most recently active opencode editor panel
-  else create new editor panel and send after ready
+zero running opencode hosts
+  -> pop notification "start opencode chat first" and noop
+
+one running opencode host
+  -> send directly to that host
+
+more than one running opencode host
+  -> show quick-pick target list
+       first/default/preselected option: "last used (%id-or-name%)"
+         routes to the active opencode host if any, otherwise most recently used host
+       remaining entries: concrete hosts sorted by last-used descending
 ```
+
+For target selection, a running opencode host is a live, not-disposed sidebar view
+or editor panel that the extension can reveal and send `insert-text` to. Serialized
+but not yet revived panels are not selectable until revived. The sidebar view counts
+as a host only after it has been created by VS Code.
 
 ## State and Persistence
 
@@ -273,7 +285,7 @@ Cons:
 - All opencode hosts share one server/proxy by default.
 - Closing one editor tab does not stop the shared server.
 - Restart shows loading/error/ready state across all open hosts.
-- Add-to-chat targets the active/recent opencode host predictably.
+- Add-to-chat targets the active/recent opencode host predictably, prompts when multiple hosts are running, andand prints notification when none is running.
 - Editor layout uses available editor width instead of the sidebar width cap.
 
 ## Verification Plan
@@ -290,7 +302,7 @@ Manual checks in VS Code Extension Development Host:
 4. Move/split editor groups using VS Code UI.
 5. Open different chats in different tabs and verify they remain visually independent.
 6. Open the same chat in two tabs and verify live message updates appear in both.
-7. Use add-file/add-selection commands and verify text is inserted into the expected host.
+7. Use add-file/add-selection commands and verify direct, prompted, and no-host sidebar-start targeting behavior.
 8. Restart opencode and verify every open host recovers or shows the same error.
 9. Reload the VS Code window and verify persisted settings/history behavior is acceptable.
 
@@ -299,5 +311,4 @@ Manual checks in VS Code Extension Development Host:
 - Do multiple VS Code `WebviewPanel` instances share iframe localStorage when they iframe the same stable proxy origin?
 - Should editor tabs become the default command, or should sidebar toggle remain primary?
 - Should tab revival via `WebviewPanelSerializer` ship in the first implementation or as a follow-up?
-- Should add-to-chat prefer the active opencode panel over sidebar even when the sidebar is visible?
 - Is global port persistence still correct across remote windows/profiles, or should it become workspace-scoped?
