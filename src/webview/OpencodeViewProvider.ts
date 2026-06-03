@@ -3,17 +3,43 @@ import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 import { exec } from "child_process";
+import { setupWebviewBridge, type WebviewBridge } from "./webviewBridge";
+import {
+  renderWebviewState,
+  type WebviewRenderState,
+} from "./webviewRenderer";
+import type { OpencodeWebviewHost } from "./webviewHost";
 
-export class OpencodeViewProvider implements vscode.WebviewViewProvider {
+export class OpencodeViewProvider
+  implements vscode.WebviewViewProvider, OpencodeWebviewHost
+{
+  readonly id = "opencode.chatView";
+  readonly title = "Chat";
+  readonly type = "sidebar";
+
   private _view?: vscode.WebviewView;
-  private _serverUrl?: string;
-  private _error?: { message: string; showInstallHint: boolean };
+  private _bridge?: WebviewBridge;
+  private _state: WebviewRenderState = { type: "loading" };
   private _sidebarType: "primary" | "auxiliary" | null = null;
+  private _lastUsedAt = 0;
+  private _disposed = false;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
   get isViewVisible(): boolean {
     return !!this._view?.visible;
+  }
+
+  get lastUsedAt(): number {
+    return this._lastUsedAt;
+  }
+
+  get disposed(): boolean {
+    return this._disposed;
+  }
+
+  get isLiveHost(): boolean {
+    return !!this._view && !!this._bridge && !this._disposed;
   }
 
   get sidebarType(): "primary" | "auxiliary" | null {
@@ -26,100 +52,66 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
 
   resolveWebviewView(webviewView: vscode.WebviewView) {
     this._view = webviewView;
+    this._disposed = false;
+    this._lastUsedAt = Date.now();
 
-    webviewView.webview.options = {
-      enableScripts: true,
-    };
-
-    // Handle paste requests relayed from the iframe through the webview script
-    webviewView.webview.onDidReceiveMessage(async (message) => {
-      if (message.type === "paste-request") {
-        const text = await vscode.env.clipboard.readText();
-        webviewView.webview.postMessage({ type: "paste-response", text });
-      }
-      if (message.type === "copy-request" && typeof message.text === "string") {
-        await vscode.env.clipboard.writeText(message.text);
-      }
-      if (message.type === "play-audio" && typeof message.src === "string") {
-        void this._playAudioDataUri(message.src);
-      }
+    this._bridge?.dispose();
+    this._bridge = setupWebviewBridge({
+      webview: webviewView.webview,
+      playAudio: (src) => this._playAudioDataUri(src),
+    });
+    webviewView.onDidDispose(() => {
+      this._bridge?.dispose();
+      this._bridge = undefined;
+      this._view = undefined;
+      this._disposed = true;
     });
 
     this._renderCurrentState();
   }
 
   setServerUrl(url: string) {
-    this._serverUrl = url;
-    this._error = undefined;
+    this._state = { type: "ready", serverUrl: url };
     this._renderCurrentState();
   }
 
   public addToChat(filePath: string) {
-    if (this._view) {
-      this._view.webview.postMessage({ type: "insert-text", text: filePath });
-    }
+    this.postInsertText(filePath);
   }
 
   setError(message: string, showInstallHint = true) {
-    this._error = { message, showInstallHint };
-    this._serverUrl = undefined;
+    this._state = { type: "error", message, showInstallHint };
     this._renderCurrentState();
   }
 
   setLoading() {
-    this._serverUrl = undefined;
-    this._error = undefined;
+    this._state = { type: "loading" };
     this._renderCurrentState();
+  }
+
+  renderState(state: WebviewRenderState): void {
+    this._state = state;
+    this._renderCurrentState();
+  }
+
+  postInsertText(text: string): Thenable<boolean> | undefined {
+    if (!this.isLiveHost || !this._bridge) return undefined;
+
+    return this._bridge.postInsertText(text).then((posted) => {
+      if (posted) this._lastUsedAt = Date.now();
+      return posted;
+    });
+  }
+
+  reveal(): Thenable<void> {
+    this._lastUsedAt = Date.now();
+    return vscode.commands.executeCommand("opencode.chatView.focus");
   }
 
   private _renderCurrentState() {
     if (!this._view) return;
 
-    if (this._error) {
-      this._view.webview.html = this._getErrorHtml(
-        this._error.message,
-        this._error.showInstallHint,
-      );
-      return;
-    }
-
-    if (this._serverUrl) {
-      this._view.webview.html = this._getIframeHtml(this._serverUrl);
-      return;
-    }
-
-    this._setLoadingHtml();
-  }
-
-  private _readTemplate(name: string): string {
-    const templatePath = path.join(__dirname, "templates", name);
-    return fs.readFileSync(templatePath, "utf-8");
-  }
-
-  private _setLoadingHtml() {
-    if (!this._view) return;
-    this._view.webview.html = this._readTemplate("loading.html");
-  }
-
-  private _getIframeHtml(serverUrl: string): string {
-    let serverOrigin = serverUrl;
-    try {
-      serverOrigin = new URL(serverUrl).origin;
-    } catch {}
-
-    return this._readTemplate("iframe.html")
-      .replaceAll("{{SERVER_URL}}", serverUrl)
-      .replaceAll("{{SERVER_ORIGIN}}", serverOrigin);
-  }
-
-  private _getErrorHtml(message: string, showInstallHint: boolean): string {
-    const installHint = showInstallHint
-      ? "<p>Make sure <code>opencode</code> is installed and available in your PATH.</p>"
-      : "";
-
-    return this._readTemplate("error.html")
-      .replaceAll("{{ERROR_MESSAGE}}", message)
-      .replaceAll("{{INSTALL_HINT}}", installHint);
+    this._view.webview.html = renderWebviewState(this._state, "sidebar");
   }
 
   // ── System-level audio playback for environments without codec support ──

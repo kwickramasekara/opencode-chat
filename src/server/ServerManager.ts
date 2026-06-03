@@ -124,7 +124,7 @@ export class ServerManager {
         if (resolved) return;
         resolved = true;
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          provider.setError("Could not find the <code>opencode</code> CLI.");
+          provider.setError("Could not find the opencode CLI.");
         } else {
           provider.setError(`Failed to start server: ${err.message}`);
         }
