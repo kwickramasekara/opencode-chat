@@ -4,7 +4,7 @@
   "description": "opencode chat extension for local and remote VS Code workspaces",
   "repository": "https://github.com/kwickramasekara/opencode-chat",
   "publisher": "kwickramasekara",
-  "version": "2.10.0",
+  "version": "2.11.0",
   "engines": {
     "vscode": "^1.80.0"
   },
