@@ -87,6 +87,10 @@ class OpencodePanelHost implements OpencodeWebviewHost, ConnectionStateHost {
     return !this.isDisposed;
   }
 
+  get isActiveHost(): boolean {
+    return this.isLiveHost && this.panel.active;
+  }
+
   get disposed(): boolean {
     return this.isDisposed;
   }

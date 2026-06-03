@@ -9,7 +9,7 @@ export function getLiveChatHosts(hostGroups: Array<OpencodeWebviewHost | Opencod
   return hostGroups
     .flat()
     .filter((host) => host.isLiveHost && !host.disposed)
-    .sort((a, b) => b.lastUsedAt - a.lastUsedAt);
+    .sort(compareHostsByDefaultPriority);
 }
 
 export async function routeTextToChat(
@@ -30,7 +30,7 @@ export async function routeTextToChat(
     return;
   }
 
-  const [lastUsed] = hosts;
+  const [lastUsed] = [...hosts].sort(compareHostsByDefaultPriority);
   const items: ChatTargetPickItem[] = [
     { label: `last used (${lastUsed.title})`, host: lastUsed },
     ...hosts.map((host) => ({ label: host.title, description: host.type, host })),
@@ -41,6 +41,17 @@ export async function routeTextToChat(
 
   if (!selected) return;
   await selected.host.postInsertText(text);
+}
+
+function compareHostsByDefaultPriority(a: OpencodeWebviewHost, b: OpencodeWebviewHost): number {
+  const activePriorityDelta = getActiveHostPriority(b) - getActiveHostPriority(a);
+  if (activePriorityDelta !== 0) return activePriorityDelta;
+  return b.lastUsedAt - a.lastUsedAt;
+}
+
+function getActiveHostPriority(host: OpencodeWebviewHost): number {
+  if (!host.isActiveHost) return 0;
+  return host.type === "editor" ? 2 : 1;
 }
 
 export function formatFileReference(uri: vscode.Uri): string {

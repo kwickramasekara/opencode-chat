@@ -172,7 +172,9 @@ describe("ServerManager connection fan-out", () => {
 
     await manager.start(context as unknown as vscode.ExtensionContext, 4100, 5100, false);
     workspace.workspaceFolders = undefined;
-    await manager.restart(context as unknown as vscode.ExtensionContext, 4200, 5200, false);
+    const restarting = manager.restart(context as unknown as vscode.ExtensionContext, 4200, 5200, false);
+    child.emit("exit", 0);
+    await restarting;
     await vi.advanceTimersByTimeAsync(5000);
 
     expect(host.states.slice(-2)).toEqual([
@@ -220,6 +222,94 @@ describe("ServerManager connection fan-out", () => {
     expect(proxyServer.close).toHaveBeenCalledOnce();
     expect(host.states).toEqual([{ type: "loading" }, { type: "loading" }]);
     expect(context.globalState.update).not.toHaveBeenCalledWith("opencode.proxyPort", 6200);
+  });
+
+  it("restarts with fresh owned server and proxy instead of reusing ports during shutdown", async () => {
+    /*
+     * Scenario: restart kills an owned server/proxy whose ports still probe alive briefly
+     *   Given the manager owns a spawned server process and webview proxy
+     *   And those owned ports must not be considered reusable during restart
+     *   When restart is requested
+     *   Then the old process and proxy are asked to shut down first
+     *   And the new generation skips same-port reuse and spawns fresh resources
+     */
+    const context = createExtensionContextMock();
+    const firstChild = createChildProcessMock();
+    const secondChild = createChildProcessMock();
+    const firstProxy = {
+      close: vi.fn((callback?: () => void) => {
+        callback?.();
+      }),
+    };
+    const secondProxy = { close: vi.fn() };
+    const isServerAlive = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValue(true);
+    const spawnProcess = vi.fn()
+      .mockReturnValueOnce(firstChild)
+      .mockReturnValueOnce(secondChild);
+    const startProxy = vi.fn()
+      .mockResolvedValueOnce({ server: firstProxy, port: 5100 })
+      .mockResolvedValueOnce({ server: secondProxy, port: 5100 });
+    const manager = new ServerManager({
+      isServerAlive,
+      startProxy,
+      spawnProcess: spawnProcess as never,
+    });
+
+    await manager.start(context as unknown as vscode.ExtensionContext, 4100, 5100, false);
+    firstChild.stdout.emit("data", Buffer.from("Listening at http://127.0.0.1:4100\n"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    const restarting = manager.restart(context as unknown as vscode.ExtensionContext, 4100, 5100, false);
+    firstChild.emit("exit", 0);
+    await restarting;
+
+    expect(firstChild.kill).toHaveBeenCalledOnce();
+    expect(firstProxy.close).toHaveBeenCalledOnce();
+    expect(spawnProcess).toHaveBeenCalledTimes(2);
+    expect(startProxy).toHaveBeenCalledTimes(1);
+    expect(isServerAlive).toHaveBeenCalledWith("http://localhost:4100");
+    expect(isServerAlive).toHaveBeenCalledWith("http://localhost:5100");
+  });
+
+  it("publishes an error to subscribers when the current server crashes after ready", async () => {
+    /*
+     * Scenario: current owned server crashes after the webview is ready
+     *   Given a spawned opencode server has emitted a ready URL
+     *   When that same current-generation process exits with a non-zero code
+     *   Then subscribers receive an error state instead of remaining ready
+     */
+    const context = createExtensionContextMock();
+    const diagnostics = createDiagnostics();
+    const child = createChildProcessMock();
+    const manager = new ServerManager({
+      diagnostics,
+      isServerAlive: vi.fn(async () => false),
+      startProxy: vi.fn(async () => ({ server: undefined, port: 6200 })),
+      spawnProcess: vi.fn(() => child) as never,
+    });
+    const host = createHost("host");
+    manager.subscribe(host);
+
+    await manager.start(context as unknown as vscode.ExtensionContext, 4100, 5100, false);
+    child.stdout.emit("data", Buffer.from("Listening at http://127.0.0.1:4100\n"));
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(host.states.at(-1)?.type).toBe("ready");
+
+    child.emit("exit", 1);
+
+    expect(diagnostics.error).toHaveBeenCalledWith("OpenCode server exited with code 1.");
+    expect(host.states.at(-1)).toEqual({
+      type: "error",
+      message: "OpenCode server exited with code 1. Check that your opencode installation is working.",
+      showInstallHint: true,
+    });
   });
 
   it("resets current state for future subscribers after dispose without publishing", async () => {

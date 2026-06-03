@@ -53,10 +53,10 @@ describe("OpencodeOutputChannel", () => {
   it("splits process chunks into safe sanitized lines", () => {
     /*
      * Scenario: process output keeps lifecycle clues but removes secrets
-     *   Given stdout contains URLs, lifecycle text, and likely secrets
+     *   Given stdout contains URLs, lifecycle text, and likely inline secrets
      *   When a process chunk is appended
      *   Then useful lines remain readable
-     *   And TOKEN/KEY/SECRET/PASSWORD/AUTH env values plus bearer tokens are redacted
+     *   And TOKEN/KEY/SECRET/PASSWORD/AUTH assignments plus bearer tokens are redacted
      */
     const diagnostics = createDiagnostics();
 
@@ -64,7 +64,7 @@ describe("OpencodeOutputChannel", () => {
       "stdout",
       [
         "Listening on http://127.0.0.1:4096",
-        "TOKEN=abc123 API_KEY=key-value SECRET='hidden' PASSWORD=pass AUTH=basic",
+        "server ready TOKEN=abc123 API_KEY=key-value SECRET='hidden' PASSWORD=pass AUTH=basic",
         "Authorization: Bearer very.secret.token",
         "ready at https://opencode.local:1234/path",
         "",
@@ -73,20 +73,54 @@ describe("OpencodeOutputChannel", () => {
 
     expect(outputChannels[0].lines).toEqual([
       "[2026-06-03 08:09:10] [process:stdout] Listening on http://127.0.0.1:4096",
-      "[2026-06-03 08:09:10] [process:stdout] TOKEN=[REDACTED] API_KEY=[REDACTED] SECRET=[REDACTED] PASSWORD=[REDACTED] AUTH=[REDACTED]",
+      "[2026-06-03 08:09:10] [process:stdout] server ready TOKEN=[REDACTED] API_KEY=[REDACTED] SECRET=[REDACTED] PASSWORD=[REDACTED] AUTH=[REDACTED]",
       "[2026-06-03 08:09:10] [process:stdout] Authorization: Bearer [REDACTED]",
       "[2026-06-03 08:09:10] [process:stdout] ready at https://opencode.local:1234/path",
     ]);
   });
 
-  it("buffers incomplete process lines so split secrets are redacted before logging", () => {
+  it("drops standalone environment assignment dumps without hiding lifecycle URLs", () => {
     /*
-     * Scenario: process output chunks split secret values and key names
-     *   Given stdout data events split a secret value across chunks
-     *   And stderr data events split a secret key name across chunks
+     * Scenario: process output includes a generic environment dump
+     *   Given stdout contains non-secret-looking environment assignments
+     *   And stdout also contains useful lifecycle/server URL lines
+     *   When process output is appended
+     *   Then standalone environment assignment lines are dropped
+     *   And lifecycle URL lines remain readable
+     */
+    const diagnostics = createDiagnostics();
+
+    diagnostics.appendProcessOutput(
+      "stdout",
+      [
+        "PATH=/usr/bin:/bin",
+        "HOME=/home/alice",
+        "SHELL=/bin/zsh",
+        "OPENCODE_CALLER=vscode",
+        "npm_config_cache=/home/alice/.npm",
+        "MY_VAR=value with spaces",
+        "Listening on http://127.0.0.1:4096",
+        "server started with api_token=secret-value",
+        "ready at https://opencode.local:1234/path",
+        "",
+      ].join("\n"),
+    );
+
+    expect(outputChannels[0].lines).toEqual([
+      "[2026-06-03 08:09:10] [process:stdout] Listening on http://127.0.0.1:4096",
+      "[2026-06-03 08:09:10] [process:stdout] server started with api_token=[REDACTED]",
+      "[2026-06-03 08:09:10] [process:stdout] ready at https://opencode.local:1234/path",
+    ]);
+  });
+
+  it("buffers incomplete process lines before dropping standalone environment assignments", () => {
+    /*
+     * Scenario: process output chunks split standalone environment assignments
+     *   Given stdout data events split an environment value across chunks
+     *   And stderr data events split an environment key name across chunks
      *   When chunks are appended before and after newline-delimited completion
      *   Then no incomplete line is logged early
-     *   And complete reconstructed lines are redacted before logging
+     *   And complete reconstructed environment assignment lines are dropped before logging
      */
     const diagnostics = createDiagnostics();
 
@@ -99,28 +133,23 @@ describe("OpencodeOutputChannel", () => {
     diagnostics.appendProcessOutput("stderr", "KEY=split-value\n");
 
     expect(outputChannels[0].lines).toEqual([
-      "[2026-06-03 08:09:10] [process:stdout] TOKEN=[REDACTED]",
       "[2026-06-03 08:09:10] [process:stdout] ready",
-      "[2026-06-03 08:09:10] [process:stderr] API_KEY=[REDACTED]",
     ]);
   });
 
-  it("flushes buffered process output through redaction on dispose", () => {
+  it("flushes buffered standalone environment assignment output without logging it", () => {
     /*
      * Scenario: process output ends without a trailing newline
-     *   Given a process emits a partial secret-bearing line
+     *   Given a process emits a partial standalone environment assignment line
      *   When diagnostics are disposed
-     *   Then the remaining buffered content is emitted once
-     *   And it uses the same process prefix and redaction path
+     *   Then the remaining buffered content is sanitized without being logged
      */
     const diagnostics = createDiagnostics();
 
     diagnostics.appendProcessOutput("stdout", "PASSWORD=final-secret");
     diagnostics.dispose();
 
-    expect(outputChannels[0].lines).toEqual([
-      "[2026-06-03 08:09:10] [process:stdout] PASSWORD=[REDACTED]",
-    ]);
+    expect(outputChannels[0].lines).toEqual([]);
     expect(outputChannels[0].dispose).toHaveBeenCalledOnce();
   });
 

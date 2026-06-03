@@ -8,12 +8,18 @@ import {
   routeTextToChat,
 } from "./addToChat";
 
-function host(id: string, title: string, lastUsedAt: number): OpencodeWebviewHost {
+function host(
+  id: string,
+  title: string,
+  lastUsedAt: number,
+  isActiveHost = false,
+): OpencodeWebviewHost {
   return {
     id,
     title,
     type: id.startsWith("sidebar") ? "sidebar" : "editor",
     isLiveHost: true,
+    isActiveHost,
     lastUsedAt,
     disposed: false,
     renderState: vi.fn(),
@@ -78,6 +84,53 @@ describe("add-to-chat routing", () => {
     ]);
     expect(newest.postInsertText).toHaveBeenCalledWith("src/main.ts");
     expect(older.postInsertText).not.toHaveBeenCalled();
+  });
+
+  it("routes the default last-used pick to the active host before newer inactive hosts", async () => {
+    /*
+     * Scenario: an active host is older than an inactive host
+     *   Given multiple live hosts exist
+     *   And one older host is active while another inactive host is more recent
+     *   When the user selects the default last-used quick-pick item
+     *   Then text is routed to the active host
+     *   And concrete host items remain sorted by recency
+     */
+    const activeOlder = host("panel-1", "opencode Chat 1", 10, true);
+    const inactiveNewest = host("panel-2", "opencode Chat 2", 30, false);
+    const inactiveMiddle = host("sidebar", "Chat", 20, false);
+    window.showQuickPick.mockImplementationOnce(async (items) => (items as Array<{ host: OpencodeWebviewHost }>)[0]);
+
+    await routeTextToChat("src/main.ts", [activeOlder, inactiveNewest, inactiveMiddle]);
+
+    const items = window.showQuickPick.mock.calls[0][0] as Array<{ label: string; host: OpencodeWebviewHost }>;
+    expect(items.map((item) => item.label)).toEqual([
+      "last used (opencode Chat 1)",
+      "opencode Chat 2",
+      "Chat",
+      "opencode Chat 1",
+    ]);
+    expect(activeOlder.postInsertText).toHaveBeenCalledWith("src/main.ts");
+    expect(inactiveNewest.postInsertText).not.toHaveBeenCalled();
+  });
+
+  it("prefers an active editor panel over a visible sidebar default", async () => {
+    /*
+     * Scenario: visible sidebar and active editor panel are both live
+     *   Given the sidebar is visible and newer
+     *   And an editor panel has the stronger active-editor signal
+     *   When the user selects the default last-used quick-pick item
+     *   Then text is routed to the active editor panel
+     */
+    const activeEditor = host("panel-1", "opencode Chat 1", 10, true);
+    const visibleSidebar = host("sidebar", "Chat", 30, true);
+    window.showQuickPick.mockImplementationOnce(async (items) => (items as Array<{ host: OpencodeWebviewHost }>)[0]);
+
+    await routeTextToChat("src/main.ts", [visibleSidebar, activeEditor]);
+
+    const items = window.showQuickPick.mock.calls[0][0] as Array<{ label: string; host: OpencodeWebviewHost }>;
+    expect(items[0].label).toBe("last used (opencode Chat 1)");
+    expect(activeEditor.postInsertText).toHaveBeenCalledWith("src/main.ts");
+    expect(visibleSidebar.postInsertText).not.toHaveBeenCalled();
   });
 
   it("keeps file and selection reference formatting stable", () => {

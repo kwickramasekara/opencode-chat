@@ -79,6 +79,7 @@ export class OpencodeOutputChannel implements vscode.Disposable {
   private appendProcessLine(source: string, line: string): void {
     const trimmedLine = line.trimEnd();
     if (trimmedLine.length === 0) return;
+    if (isStandaloneEnvAssignment(trimmedLine)) return;
 
     const safeSource = source.replace(/[^a-zA-Z0-9_.:-]/g, "-");
     this.appendLine(
@@ -114,10 +115,18 @@ function normalizeLineEndings(chunk: string): string {
 function redactSecrets(line: string): string {
   return line
     .replace(
+      /(^|\s)([A-Z_][A-Z0-9_]{1,})\s*=\s*("[^"]*"|'[^']*'|[^\s]+)/g,
+      "$1$2=[REDACTED]",
+    )
+    .replace(
       /\b([A-Z0-9_]*(?:TOKEN|KEY|SECRET|PASSWORD|AUTH)[A-Z0-9_]*)\s*=\s*("[^"]*"|'[^']*'|[^\s]+)/gi,
       "$1=[REDACTED]",
     )
     .replace(/\bBearer\s+([A-Za-z0-9._~+/=-]+)/gi, "Bearer [REDACTED]");
+}
+
+function isStandaloneEnvAssignment(line: string): boolean {
+  return /^\s*[a-z_][a-z0-9_]*\s*=.+$/i.test(line);
 }
 
 function pad(value: number): string {

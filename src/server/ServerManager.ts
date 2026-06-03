@@ -20,6 +20,11 @@ export interface OpencodeLifecycleDiagnostics {
 
 type ProxyServerLike = Pick<http.Server, "close">;
 
+interface StartOptions {
+  skipServerReuse?: boolean;
+  skipProxyReuse?: boolean;
+}
+
 interface ServerManagerOptions {
   diagnostics?: OpencodeLifecycleDiagnostics;
   isServerAlive?: (url: string) => Promise<boolean>;
@@ -65,6 +70,16 @@ export class ServerManager {
     proxyPort: number,
     exposeToNetwork: boolean = false,
   ): Promise<void> {
+    await this.startInternal(context, port, proxyPort, exposeToNetwork, {});
+  }
+
+  private async startInternal(
+    context: vscode.ExtensionContext,
+    port: number,
+    proxyPort: number,
+    exposeToNetwork: boolean,
+    options: StartOptions,
+  ): Promise<void> {
     const generation = ++this.generation;
     this.clearFallbackTimers();
     this.publishForGeneration(generation, { type: "loading" });
@@ -109,7 +124,11 @@ export class ServerManager {
         const parsed = new URL(serverUrl);
         const realPort = parseInt(parsed.port, 10);
 
-        if (proxyPort > 0 && (await this.checkServerAlive(`http://localhost:${proxyPort}`))) {
+        if (
+          !options.skipProxyReuse &&
+          proxyPort > 0 &&
+          (await this.checkServerAlive(`http://localhost:${proxyPort}`))
+        ) {
           if (!this.isCurrentGeneration(generation)) return;
           this.diagnostics?.info(`Reusing webview proxy on port ${proxyPort}.`);
           await setWebviewServerUrl(new URL(`http://localhost:${proxyPort}`));
@@ -152,7 +171,7 @@ export class ServerManager {
     };
 
     const existingUrl = `http://localhost:${port}`;
-    if (await this.checkServerAlive(existingUrl)) {
+    if (!options.skipServerReuse && (await this.checkServerAlive(existingUrl))) {
       if (!this.isCurrentGeneration(generation)) return;
       this.diagnostics?.info(`Reusing opencode server at ${existingUrl}.`);
       await serveViaProxy(existingUrl);
@@ -220,15 +239,13 @@ export class ServerManager {
         if (!this.isCurrentGeneration(generation)) return;
         if (code !== null && code !== 0) {
           this.diagnostics?.error(`OpenCode server exited with code ${code}.`);
-          if (!resolved) {
-            resolved = true;
-            this.clearFallbackTimers();
-            this.publishForGeneration(generation, {
-              type: "error",
-              message: `OpenCode server exited with code ${code}. Check that your opencode installation is working.`,
-              showInstallHint: true,
-            });
-          }
+          resolved = true;
+          this.clearFallbackTimers();
+          this.publishForGeneration(generation, {
+            type: "error",
+            message: `OpenCode server exited with code ${code}. Check that your opencode installation is working.`,
+            showInstallHint: true,
+          });
         }
       });
 
@@ -260,24 +277,44 @@ export class ServerManager {
     exposeToNetwork: boolean = false,
   ): Promise<void> {
     this.diagnostics?.info("Restarting opencode server.");
-    this.dispose();
-    await this.start(context, port, proxyPort, exposeToNetwork);
+    const stopped = await this.stopOwnedResources(true);
+    await this.startInternal(context, port, proxyPort, exposeToNetwork, {
+      skipServerReuse: stopped.serverProcess,
+      skipProxyReuse: stopped.proxyServer,
+    });
   }
 
   dispose(): void {
+    void this.stopOwnedResources(false);
+  }
+
+  private async stopOwnedResources(awaitShutdown: boolean): Promise<{
+    serverProcess: boolean;
+    proxyServer: boolean;
+  }> {
     this.generation++;
     this.state = { type: "loading" };
     this.clearFallbackTimers();
-    if (this.proxyServer) {
+
+    const proxyServer = this.proxyServer;
+    const serverProcess = this.serverProcess;
+
+    if (proxyServer) {
       this.diagnostics?.info("Stopping webview proxy.");
-      this.proxyServer.close();
       this.proxyServer = undefined;
     }
-    if (this.serverProcess) {
+    if (serverProcess) {
       this.diagnostics?.info("Stopping opencode server process.");
-      this.serverProcess.kill();
       this.serverProcess = undefined;
     }
+
+    const shutdowns: Array<Promise<void>> = [];
+    if (proxyServer) shutdowns.push(closeProxyServer(proxyServer, awaitShutdown));
+    if (serverProcess) shutdowns.push(killServerProcess(serverProcess, awaitShutdown));
+
+    if (awaitShutdown) await Promise.all(shutdowns);
+
+    return { serverProcess: !!serverProcess, proxyServer: !!proxyServer };
   }
 
   private publish(state: ConnectionState): void {
@@ -327,4 +364,44 @@ function formatWorkspaceLabel(name: string | undefined, cwd: string): string {
   const parentLabel = parentName && parentName !== "." ? `, parent ".../${parentName}"` : "";
 
   return `"${workspaceName}" (folder "${folderName}"${parentLabel})`;
+}
+
+function closeProxyServer(server: ProxyServerLike, awaitShutdown: boolean): Promise<void> {
+  if (!awaitShutdown) {
+    server.close();
+    return Promise.resolve();
+  }
+
+  return withTimeout(
+    new Promise<void>((resolve) => {
+      server.close(() => resolve());
+    }),
+    100,
+  );
+}
+
+function killServerProcess(process: ChildProcess, awaitShutdown: boolean): Promise<void> {
+  if (!awaitShutdown) {
+    process.kill();
+    return Promise.resolve();
+  }
+
+  return withTimeout(
+    new Promise<void>((resolve) => {
+      process.once("exit", () => resolve());
+      process.once("close", () => resolve());
+      process.kill();
+    }),
+    100,
+  );
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | void> {
+  return new Promise((resolve) => {
+    const timeout = setTimeout(() => resolve(), timeoutMs);
+    promise.then((value) => {
+      clearTimeout(timeout);
+      resolve(value);
+    });
+  });
 }

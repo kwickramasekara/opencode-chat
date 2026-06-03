@@ -7,6 +7,7 @@ export interface OpencodeWebviewHost {
   readonly title: string;
   readonly type: WebviewHostType;
   readonly isLiveHost: boolean;
+  readonly isActiveHost: boolean;
   readonly lastUsedAt: number;
   readonly disposed: boolean;
   renderState(state: WebviewRenderState): void;

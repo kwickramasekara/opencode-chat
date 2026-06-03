@@ -42,6 +42,10 @@ export class OpencodeViewProvider
     return !!this._view && !!this._bridge && !this._disposed;
   }
 
+  get isActiveHost(): boolean {
+    return this.isLiveHost && this.isViewVisible;
+  }
+
   get sidebarType(): "primary" | "auxiliary" | null {
     return this._sidebarType;
   }

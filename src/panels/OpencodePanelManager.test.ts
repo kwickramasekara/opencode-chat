@@ -121,6 +121,11 @@ describe("OpencodePanelManager", () => {
       secondPanel.active = true;
       secondPanel.fireDidChangeViewState();
       expect(second.lastUsedAt).toBe(1_000);
+      expect(second.isActiveHost).toBe(true);
+
+      secondPanel.active = false;
+      secondPanel.fireDidChangeViewState();
+      expect(second.isActiveHost).toBe(false);
 
       vi.setSystemTime(2_000);
       await first.postInsertText("src/main.ts");
