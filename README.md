@@ -13,8 +13,9 @@ Unofficial extension that integrates the webview of opencode chat into your IDE.
 - **Seamless Clipboard Support**: Overcomes typical webview iframe limitations to provide full copy, cut, and paste functionality (including image pasting) within the chat.
 - **Persistent Sessions**: Saves your session, port, and user preferences across VS Code restarts.
 - **Local Network Access**: Enable the `opencode.exposeToNetwork` setting to access the same opencode instance from your mobile device or any other device on the same network at `http://opencode.local:<port>`.
+- **Remote Workspace Support**: Runs in the workspace extension host and routes the webview through VS Code's remote port forwarding, so SSH, Dev Containers, WSL, and Codespaces can load the chat from the remote machine.
 
-Note: requires opencode CLI to be installed. See https://opencode.ai/
+Note: requires the opencode CLI to be installed where the workspace runs. For Remote SSH, Dev Containers, WSL, and Codespaces, install `opencode` in the remote environment, not only on your local machine. See https://opencode.ai/
 
 ## Development
 
