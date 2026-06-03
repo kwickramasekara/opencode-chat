@@ -305,6 +305,11 @@ const WEBVIEW_SCRIPT = /*html*/ `
 export function startWebviewProxy(
   targetPort: number,
   proxyPort: number = 0,
+  diagnostics?: {
+    info(message: string): void;
+    warn(message: string): void;
+    error(message: string): void;
+  },
 ): Promise<{ server: http.Server; port: number }> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -380,9 +385,16 @@ export function startWebviewProxy(
     });
 
     const tryListen = (port: number) => {
+      diagnostics?.info(`Webview proxy listening attempt on port ${port || 0}.`);
       server.listen(port, "localhost", () => {
         server.removeAllListeners("error");
-        server.on("error", reject);
+        server.on("error", (err) => {
+          diagnostics?.error(`Webview proxy failed after start: ${err.message}.`);
+          reject(err);
+        });
+        diagnostics?.info(
+          `Webview proxy started on port ${(server.address() as net.AddressInfo).port}.`,
+        );
         resolve({ server, port: (server.address() as net.AddressInfo).port });
       });
     };
@@ -390,9 +402,13 @@ export function startWebviewProxy(
     server.on("error", (err: any) => {
       if (err.code === "EADDRINUSE" && proxyPort !== 0) {
         // Fallback to random port
+        diagnostics?.warn(
+          `Webview proxy port ${proxyPort} is in use; falling back to a random port.`,
+        );
         proxyPort = 0;
         tryListen(0);
       } else {
+        diagnostics?.error(`Webview proxy failed to start: ${err.message}.`);
         reject(err);
       }
     });

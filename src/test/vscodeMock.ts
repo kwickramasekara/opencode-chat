@@ -36,6 +36,14 @@ export class Uri {
   toString(): string {
     return this.value;
   }
+
+  get fsPath(): string {
+    if (this.value.startsWith("file://")) {
+      return this.value.slice("file://".length);
+    }
+
+    return this.value;
+  }
 }
 
 export enum ViewColumn {
@@ -146,7 +154,9 @@ export const commands = {
 };
 
 export const workspace = {
-  workspaceFolders: [{ uri: Uri.file("/workspace"), name: "workspace", index: 0 }],
+  workspaceFolders: [{ uri: Uri.file("/workspace"), name: "workspace", index: 0 }] as
+    | Array<{ uri: Uri; name: string; index: number }>
+    | undefined,
   getConfiguration: vi.fn(() => ({
     get: vi.fn((_key: string, defaultValue?: unknown) => defaultValue),
     update: vi.fn(async () => undefined),
@@ -176,4 +186,5 @@ export function resetVscodeMocks(): void {
   vi.clearAllMocks();
   window.activeTextEditor = undefined;
   workspace.workspaceFolders = [{ uri: Uri.file("/workspace"), name: "workspace", index: 0 }];
+  env.asExternalUri.mockImplementation(async (uri: Uri) => uri);
 }

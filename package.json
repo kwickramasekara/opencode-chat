@@ -33,6 +33,10 @@
         "title": "opencode: Restart"
       },
       {
+        "command": "opencode.showOutput",
+        "title": "opencode: Show Output"
+      },
+      {
         "command": "opencode.addSelectionToChat",
         "title": "opencode: Add Selection to Chat",
         "icon": "$(add)"

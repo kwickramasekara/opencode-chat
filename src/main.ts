@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { OpencodeViewProvider } from "./webview/OpencodeViewProvider";
 import { ServerManager } from "./server/ServerManager";
+import { OpencodeOutputChannel } from "./diagnostics/OpencodeOutputChannel";
 
 let serverManager: ServerManager | undefined;
 
@@ -29,6 +30,8 @@ export function activate(context: vscode.ExtensionContext) {
     storedProxyPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
 
   const exposeToNetwork = config.get<boolean>("exposeToNetwork", false);
+  const output = new OpencodeOutputChannel();
+  context.subscriptions.push(output);
 
   // Register the webview panel provider
   const provider = new OpencodeViewProvider(context.extensionUri);
@@ -39,8 +42,15 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // Start the opencode server
-  serverManager = new ServerManager();
-  serverManager.start(provider, context, port, proxyPort, exposeToNetwork);
+  serverManager = new ServerManager({ diagnostics: output });
+  context.subscriptions.push(serverManager.subscribe(provider));
+  serverManager.start(context, port, proxyPort, exposeToNetwork);
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.showOutput", () => {
+      output.show();
+    }),
+  );
 
   // Register the opencode.addToChat command
   context.subscriptions.push(
@@ -132,11 +142,7 @@ export function activate(context: vscode.ExtensionContext) {
         false,
       );
 
-      serverManager?.dispose();
-      provider.setLoading();
-      serverManager = new ServerManager();
-      serverManager.start(
-        provider,
+      serverManager?.restart(
         context,
         restartPort,
         restartProxyPort,

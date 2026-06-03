@@ -1,72 +1,144 @@
 import * as vscode from "vscode";
 import { ChildProcess, spawn } from "child_process";
 import * as http from "http";
-import { OpencodeViewProvider } from "../webview/OpencodeViewProvider";
+import * as path from "path";
 import { startWebviewProxy } from "../proxy/WebviewProxy";
+import type { WebviewRenderState } from "../webview/webviewRenderer";
+
+export type ConnectionState = WebviewRenderState;
+
+export interface ConnectionStateHost {
+  renderState(state: ConnectionState): void;
+}
+
+export interface OpencodeLifecycleDiagnostics {
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string): void;
+  appendProcessOutput(source: string, chunk: string | Buffer): void;
+}
+
+type ProxyServerLike = Pick<http.Server, "close">;
+
+interface ServerManagerOptions {
+  diagnostics?: OpencodeLifecycleDiagnostics;
+  isServerAlive?: (url: string) => Promise<boolean>;
+  startProxy?: (
+    targetPort: number,
+    proxyPort?: number,
+    diagnostics?: Pick<OpencodeLifecycleDiagnostics, "info" | "warn" | "error">,
+  ) => Promise<{ server?: ProxyServerLike; port: number }>;
+  spawnProcess?: typeof spawn;
+}
 
 export class ServerManager {
   private serverProcess: ChildProcess | undefined;
-  private proxyServer: http.Server | undefined;
+  private proxyServer: ProxyServerLike | undefined;
+  private readonly hosts = new Set<ConnectionStateHost>();
+  private state: ConnectionState = { type: "loading" };
+  private readonly diagnostics?: OpencodeLifecycleDiagnostics;
+  private readonly checkServerAlive: (url: string) => Promise<boolean>;
+  private readonly startProxy: NonNullable<ServerManagerOptions["startProxy"]>;
+  private readonly spawnProcess: typeof spawn;
+  private generation = 0;
+  private readonly fallbackTimers = new Set<ReturnType<typeof setTimeout>>();
+
+  constructor(options: ServerManagerOptions = {}) {
+    this.diagnostics = options.diagnostics;
+    this.checkServerAlive = options.isServerAlive ?? ((url) => this.isServerAlive(url));
+    this.startProxy = options.startProxy ?? startWebviewProxy;
+    this.spawnProcess = options.spawnProcess ?? spawn;
+  }
+
+  subscribe(host: ConnectionStateHost): vscode.Disposable {
+    this.hosts.add(host);
+    host.renderState(this.state);
+
+    return new vscode.Disposable(() => {
+      this.hosts.delete(host);
+    });
+  }
 
   async start(
-    provider: OpencodeViewProvider,
     context: vscode.ExtensionContext,
     port: number,
     proxyPort: number,
     exposeToNetwork: boolean = false,
   ): Promise<void> {
-    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const generation = ++this.generation;
+    this.clearFallbackTimers();
+    this.publishForGeneration(generation, { type: "loading" });
+
+    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+    const cwd = workspaceFolder?.uri.fsPath;
 
     if (!cwd) {
-      provider.setError("No workspace folder open.", false);
+      this.diagnostics?.warn("No workspace folder open; opencode server not started.");
+      this.publishForGeneration(generation, {
+        type: "error",
+        message: "No workspace folder open.",
+        showInstallHint: false,
+      });
       return;
     }
 
-    // Persist the port so we can reuse it next time (preserves iframe localStorage)
-    context.globalState.update("opencode.serverPort", port);
-    context.globalState.update("opencode.proxyPort", proxyPort);
+    this.diagnostics?.info(`Using workspace ${formatWorkspaceLabel(workspaceFolder.name, cwd)}.`);
+    this.diagnostics?.info(
+      `Using opencode server port ${port} and webview proxy port ${proxyPort}.`,
+    );
+
+    // Persist the port so we can reuse it next time (preserves iframe localStorage).
+    await context.globalState.update("opencode.serverPort", port);
+    await context.globalState.update("opencode.proxyPort", proxyPort);
+    if (!this.isCurrentGeneration(generation)) return;
 
     const workspacePath = `/${Buffer.from(cwd).toString("base64url")}`;
 
     const setWebviewServerUrl = async (url: URL) => {
+      if (!this.isCurrentGeneration(generation)) return;
       url.pathname = workspacePath;
       const externalUri = await vscode.env.asExternalUri(
         vscode.Uri.parse(url.toString()),
       );
-      provider.setServerUrl(externalUri.toString());
+      this.publishForGeneration(generation, { type: "ready", serverUrl: externalUri.toString() });
     };
 
-    // Helper: start the keyboard proxy and hand the proxied URL to the provider.
-    // If another VS Code window already owns the proxy on the stored port we
-    // reuse it instead of spinning up a second proxy (which would land on a
-    // different port → different origin → lost localStorage preferences).
     const serveViaProxy = async (serverUrl: string) => {
       try {
+        if (!this.isCurrentGeneration(generation)) return;
         const parsed = new URL(serverUrl);
         const realPort = parseInt(parsed.port, 10);
 
-        // Check whether the proxy from another window is still alive.
-        if (
-          proxyPort > 0 &&
-          (await this.isServerAlive(`http://localhost:${proxyPort}`))
-        ) {
-          // Proxy already running — just reuse it (no new server to track).
-          await setWebviewServerUrl(
-            new URL(`http://localhost:${proxyPort}`),
-          );
+        if (proxyPort > 0 && (await this.checkServerAlive(`http://localhost:${proxyPort}`))) {
+          if (!this.isCurrentGeneration(generation)) return;
+          this.diagnostics?.info(`Reusing webview proxy on port ${proxyPort}.`);
+          await setWebviewServerUrl(new URL(`http://localhost:${proxyPort}`));
           return;
         }
 
-        const result = await startWebviewProxy(realPort, proxyPort);
+        this.diagnostics?.info(
+          `Starting webview proxy on port ${proxyPort || 0} for opencode port ${realPort}.`,
+        );
+        const result = await this.startProxy(realPort, proxyPort, this.diagnostics);
+        if (!this.isCurrentGeneration(generation)) {
+          result.server?.close();
+          return;
+        }
         this.proxyServer = result.server;
 
         if (result.port !== proxyPort) {
-          context.globalState.update("opencode.proxyPort", result.port);
+          this.diagnostics?.warn(
+            `Webview proxy requested port ${proxyPort} but is using port ${result.port}.`,
+          );
+          await context.globalState.update("opencode.proxyPort", result.port);
         }
 
         await setWebviewServerUrl(new URL(`http://localhost:${result.port}`));
-      } catch {
-        // Fallback: serve without proxy
+      } catch (err) {
+        if (!this.isCurrentGeneration(generation)) return;
+        this.diagnostics?.warn(
+          `Webview proxy unavailable; falling back to direct server URL. ${formatError(err)}`,
+        );
         try {
           const u = new URL(serverUrl);
           if (u.hostname === "0.0.0.0" || u.hostname === "::") {
@@ -74,15 +146,15 @@ export class ServerManager {
           }
           await setWebviewServerUrl(u);
         } catch {
-          provider.setServerUrl(serverUrl);
+          this.publishForGeneration(generation, { type: "ready", serverUrl });
         }
       }
     };
 
-    // Check if a server from the previous session is still running on this port.
-    // If so, just reuse it instead of spawning a new one.
     const existingUrl = `http://localhost:${port}`;
-    if (await this.isServerAlive(existingUrl)) {
+    if (await this.checkServerAlive(existingUrl)) {
+      if (!this.isCurrentGeneration(generation)) return;
+      this.diagnostics?.info(`Reusing opencode server at ${existingUrl}.`);
       await serveViaProxy(existingUrl);
       return;
     }
@@ -93,7 +165,8 @@ export class ServerManager {
         args.push("--mdns");
       }
 
-      this.serverProcess = spawn("opencode", args, {
+      this.diagnostics?.info(`Spawning opencode server: opencode ${args.join(" ")}.`);
+      this.serverProcess = this.spawnProcess("opencode", args, {
         cwd,
         stdio: "pipe",
         env: {
@@ -105,63 +178,131 @@ export class ServerManager {
       let resolved = false;
 
       const onUrl = (url: string) => {
+        if (!this.isCurrentGeneration(generation)) return;
         if (resolved) return;
         resolved = true;
-        serveViaProxy(url);
+        this.clearFallbackTimers();
+        this.diagnostics?.info(`Detected opencode server URL ${url}.`);
+        void serveViaProxy(url);
       };
 
-      // Parse stdout/stderr for the server URL
-      const handleOutput = (data: Buffer) => {
+      const handleOutput = (source: "stdout" | "stderr", data: Buffer) => {
+        if (!this.isCurrentGeneration(generation)) return;
+        this.diagnostics?.appendProcessOutput(source, data);
         const output = data.toString();
         const match = output.match(/https?:\/\/[^\s]+/);
         if (match) onUrl(match[0]);
       };
 
-      this.serverProcess.stdout?.on("data", handleOutput);
-      this.serverProcess.stderr?.on("data", handleOutput);
+      this.serverProcess.stdout?.on("data", (data: Buffer) => handleOutput("stdout", data));
+      this.serverProcess.stderr?.on("data", (data: Buffer) => handleOutput("stderr", data));
 
       this.serverProcess.on("error", (err) => {
+        if (!this.isCurrentGeneration(generation)) return;
         if (resolved) return;
         resolved = true;
+        this.clearFallbackTimers();
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          provider.setError("Could not find the opencode CLI.");
+          this.diagnostics?.error("Could not find the opencode CLI.");
+          this.publishForGeneration(generation, {
+            type: "error",
+            message: "Could not find the opencode CLI.",
+            showInstallHint: true,
+          });
         } else {
-          provider.setError(`Failed to start server: ${err.message}`);
+          const message = `Failed to start server: ${err.message}`;
+          this.diagnostics?.error(message);
+          this.publishForGeneration(generation, { type: "error", message, showInstallHint: true });
         }
       });
 
       this.serverProcess.on("exit", (code) => {
+        if (!this.isCurrentGeneration(generation)) return;
         if (code !== null && code !== 0) {
+          this.diagnostics?.error(`OpenCode server exited with code ${code}.`);
           if (!resolved) {
             resolved = true;
-            provider.setError(
-              `OpenCode server exited with code ${code}. Check that your opencode installation is working.`,
-            );
+            this.clearFallbackTimers();
+            this.publishForGeneration(generation, {
+              type: "error",
+              message: `OpenCode server exited with code ${code}. Check that your opencode installation is working.`,
+              showInstallHint: true,
+            });
           }
         }
       });
 
-      // Fallback: if we don't see a URL in stdout after 5s, just try the expected URL
-      setTimeout(() => {
-        onUrl(`http://localhost:${port}`);
+      const fallbackTimer = setTimeout(() => {
+        this.fallbackTimers.delete(fallbackTimer);
+        if (!this.isCurrentGeneration(generation)) return;
+        if (!resolved) {
+          this.diagnostics?.warn(`No server URL detected; trying expected URL ${existingUrl}.`);
+          onUrl(existingUrl);
+        }
       }, 5000);
-    } catch {
-      provider.setError("Failed to start the OpenCode server.");
+      this.fallbackTimers.add(fallbackTimer);
+    } catch (err) {
+      if (!this.isCurrentGeneration(generation)) return;
+      const message = `Failed to start the OpenCode server. ${formatError(err)}`;
+      this.diagnostics?.error(message);
+      this.publishForGeneration(generation, {
+        type: "error",
+        message: "Failed to start the OpenCode server.",
+        showInstallHint: true,
+      });
     }
   }
 
+  async restart(
+    context: vscode.ExtensionContext,
+    port: number,
+    proxyPort: number,
+    exposeToNetwork: boolean = false,
+  ): Promise<void> {
+    this.diagnostics?.info("Restarting opencode server.");
+    this.dispose();
+    await this.start(context, port, proxyPort, exposeToNetwork);
+  }
+
   dispose(): void {
+    this.generation++;
+    this.state = { type: "loading" };
+    this.clearFallbackTimers();
     if (this.proxyServer) {
+      this.diagnostics?.info("Stopping webview proxy.");
       this.proxyServer.close();
       this.proxyServer = undefined;
     }
     if (this.serverProcess) {
+      this.diagnostics?.info("Stopping opencode server process.");
       this.serverProcess.kill();
       this.serverProcess = undefined;
     }
   }
 
-  // Quick health check to see if a server from a previous session is still alive.
+  private publish(state: ConnectionState): void {
+    this.state = state;
+    for (const host of this.hosts) {
+      host.renderState(state);
+    }
+  }
+
+  private publishForGeneration(generation: number, state: ConnectionState): void {
+    if (!this.isCurrentGeneration(generation)) return;
+    this.publish(state);
+  }
+
+  private isCurrentGeneration(generation: number): boolean {
+    return generation === this.generation;
+  }
+
+  private clearFallbackTimers(): void {
+    for (const timer of this.fallbackTimers) {
+      clearTimeout(timer);
+    }
+    this.fallbackTimers.clear();
+  }
+
   private async isServerAlive(url: string): Promise<boolean> {
     try {
       const controller = new AbortController();
@@ -173,4 +314,17 @@ export class ServerManager {
       return false;
     }
   }
+}
+
+function formatError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err ?? "");
+}
+
+function formatWorkspaceLabel(name: string | undefined, cwd: string): string {
+  const folderName = path.basename(cwd) || "workspace";
+  const parentName = path.basename(path.dirname(cwd));
+  const workspaceName = name || folderName;
+  const parentLabel = parentName && parentName !== "." ? `, parent ".../${parentName}"` : "";
+
+  return `"${workspaceName}" (folder "${folderName}"${parentLabel})`;
 }
