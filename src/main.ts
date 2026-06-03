@@ -2,6 +2,13 @@ import * as vscode from "vscode";
 import { OpencodeViewProvider } from "./webview/OpencodeViewProvider";
 import { ServerManager } from "./server/ServerManager";
 import { OpencodeOutputChannel } from "./diagnostics/OpencodeOutputChannel";
+import { OpencodePanelManager } from "./panels/OpencodePanelManager";
+import {
+  formatFileReference,
+  formatSelectionReference,
+  getLiveChatHosts,
+  routeTextToChat,
+} from "./commands/addToChat";
 
 let serverManager: ServerManager | undefined;
 
@@ -46,9 +53,24 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(serverManager.subscribe(provider));
   serverManager.start(context, port, proxyPort, exposeToNetwork);
 
+  const panelManager = new OpencodePanelManager(context.extensionUri, serverManager);
+  context.subscriptions.push(panelManager);
+
   context.subscriptions.push(
     vscode.commands.registerCommand("opencode.showOutput", () => {
       output.show();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.openChat", () => {
+      panelManager.openChat();
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.openChatBeside", () => {
+      panelManager.openChatBeside();
     }),
   );
 
@@ -56,11 +78,13 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand(
       "opencode.addToChat",
-      (uri?: vscode.Uri) => {
+      async (uri?: vscode.Uri) => {
         const fileUri = uri || vscode.window.activeTextEditor?.document.uri;
         if (fileUri) {
-          const relativePath = vscode.workspace.asRelativePath(fileUri);
-          provider.addToChat(relativePath);
+          await routeTextToChat(
+            formatFileReference(fileUri),
+            getLiveChatHosts([provider, panelManager.getLiveHosts()]),
+          );
         }
       },
     ),
@@ -68,26 +92,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register the opencode.addSelectionToChat command
   context.subscriptions.push(
-    vscode.commands.registerCommand("opencode.addSelectionToChat", () => {
+    vscode.commands.registerCommand("opencode.addSelectionToChat", async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor) return;
-
-      const sel = editor.selection;
-      const relativePath = vscode.workspace.asRelativePath(editor.document.uri);
-
-      let ref: string;
-      if (sel.isEmpty) {
-        // Cursor only — just line number
-        ref = `${relativePath}:${sel.start.line + 1}`;
-      } else if (sel.start.line === sel.end.line) {
-        // Single line selection — file:line:startCol-endCol
-        ref = `${relativePath}:${sel.start.line + 1}:${sel.start.character + 1}-${sel.end.character + 1}`;
-      } else {
-        // Multi-line selection — file:startLine:startCol-endLine:endCol
-        ref = `${relativePath}:${sel.start.line + 1}:${sel.start.character + 1}-${sel.end.line + 1}:${sel.end.character + 1}`;
-      }
-
-      provider.addToChat(ref);
+      await routeTextToChat(
+        formatSelectionReference(editor),
+        getLiveChatHosts([provider, panelManager.getLiveHosts()]),
+      );
     }),
   );
 
@@ -123,6 +134,12 @@ export function activate(context: vscode.ExtensionContext) {
       await vscode.commands.executeCommand(SIDEBAR_CMDS[other]);
       provider.sidebarType = other;
       context.globalState.update("opencode.sidebarType", other);
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.toggleChatViewInPanelOrSidebar", async () => {
+      await vscode.commands.executeCommand("opencode.toggleChatView");
     }),
   );
 

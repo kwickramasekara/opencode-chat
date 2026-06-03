@@ -57,6 +57,7 @@ export enum ViewColumn {
 export const outputChannels: ReturnType<typeof createOutputChannelMock>[] = [];
 export const registeredCommands: Array<{ command: string; callback: (...args: unknown[]) => unknown }> = [];
 export const registeredWebviewViewProviders: Array<{ viewType: string; provider: unknown; options?: unknown }> = [];
+export const createdWebviewPanels: ReturnType<typeof createWebviewPanelMock>[] = [];
 
 export function createOutputChannelMock(name = "opencode") {
   const lines: string[] = [];
@@ -106,14 +107,35 @@ export function createWebviewViewMock() {
 }
 
 export function createWebviewPanelMock() {
+  const disposeCallbacks: Array<() => void> = [];
+  const viewStateCallbacks: Array<() => void> = [];
+
   return {
     active: true,
     visible: true,
     webview: createWebviewMock(),
     reveal: vi.fn(),
     dispose: vi.fn(),
-    onDidDispose: vi.fn(() => new Disposable()),
-    onDidChangeViewState: vi.fn(() => new Disposable()),
+    onDidDispose: vi.fn((callback: () => void) => {
+      disposeCallbacks.push(callback);
+      return new Disposable(() => {
+        const index = disposeCallbacks.indexOf(callback);
+        if (index >= 0) disposeCallbacks.splice(index, 1);
+      });
+    }),
+    onDidChangeViewState: vi.fn((callback: () => void) => {
+      viewStateCallbacks.push(callback);
+      return new Disposable(() => {
+        const index = viewStateCallbacks.indexOf(callback);
+        if (index >= 0) viewStateCallbacks.splice(index, 1);
+      });
+    }),
+    fireDidDispose: () => {
+      for (const callback of [...disposeCallbacks]) callback();
+    },
+    fireDidChangeViewState: () => {
+      for (const callback of [...viewStateCallbacks]) callback();
+    },
   };
 }
 
@@ -138,10 +160,15 @@ export const window = {
     registeredWebviewViewProviders.push({ viewType, provider, options });
     return new Disposable();
   }),
-  createWebviewPanel: vi.fn(() => createWebviewPanelMock()),
+  createWebviewPanel: vi.fn(() => {
+    const panel = createWebviewPanelMock();
+    createdWebviewPanels.push(panel);
+    return panel;
+  }),
   showInformationMessage: vi.fn(),
   showErrorMessage: vi.fn(),
   showWarningMessage: vi.fn(),
+  showQuickPick: vi.fn(),
   activeTextEditor: undefined as unknown,
 };
 
@@ -183,6 +210,7 @@ export function resetVscodeMocks(): void {
   outputChannels.length = 0;
   registeredCommands.length = 0;
   registeredWebviewViewProviders.length = 0;
+  createdWebviewPanels.length = 0;
   vi.clearAllMocks();
   window.activeTextEditor = undefined;
   workspace.workspaceFolders = [{ uri: Uri.file("/workspace"), name: "workspace", index: 0 }];

@@ -29,6 +29,18 @@
         "title": "opencode: Toggle Chat View"
       },
       {
+        "command": "opencode.toggleChatViewInPanelOrSidebar",
+        "title": "opencode: Toggle Chat View"
+      },
+      {
+        "command": "opencode.openChat",
+        "title": "opencode: Open Chat"
+      },
+      {
+        "command": "opencode.openChatBeside",
+        "title": "opencode: Open Chat Beside"
+      },
+      {
         "command": "opencode.restart",
         "title": "opencode: Restart"
       },
