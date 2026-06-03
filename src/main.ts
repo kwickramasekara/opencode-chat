@@ -29,6 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
     storedProxyPort ?? Math.floor(Math.random() * (65535 - 16384 + 1)) + 16384;
 
   const exposeToNetwork = config.get<boolean>("exposeToNetwork", false);
+  const opencodePath = config.get<string>("path", "").trim();
 
   // Register the webview panel provider
   const provider = new OpencodeViewProvider(context.extensionUri);
@@ -40,7 +41,14 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Start the opencode server
   serverManager = new ServerManager();
-  serverManager.start(provider, context, port, proxyPort, exposeToNetwork);
+  serverManager.start(
+    provider,
+    context,
+    port,
+    proxyPort,
+    exposeToNetwork,
+    opencodePath,
+  );
 
   // Register the opencode.addToChat command
   context.subscriptions.push(
@@ -131,6 +139,7 @@ export function activate(context: vscode.ExtensionContext) {
         "exposeToNetwork",
         false,
       );
+      const restartOpencodePath = restartConfig.get<string>("path", "").trim();
 
       serverManager?.dispose();
       provider.setLoading();
@@ -141,6 +150,7 @@ export function activate(context: vscode.ExtensionContext) {
         restartPort,
         restartProxyPort,
         restartExposeToNetwork,
+        restartOpencodePath,
       );
     }),
   );
@@ -150,7 +160,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (
         e.affectsConfiguration("opencode.port") ||
-        e.affectsConfiguration("opencode.exposeToNetwork")
+        e.affectsConfiguration("opencode.exposeToNetwork") ||
+        e.affectsConfiguration("opencode.path")
       ) {
         vscode.window
           .showInformationMessage(

@@ -87,6 +87,11 @@
           "maximum": 65535,
           "description": "Fixed port for the opencode server. Set to 0 (default) to use a random port. Note: changing the port resets preferences stored in the webview (e.g. theme) since they are tied to the origin."
         },
+        "opencode.path": {
+          "type": "string",
+          "default": "",
+          "description": "Full path to the opencode CLI executable. Leave empty to run opencode from PATH."
+        },
         "opencode.exposeToNetwork": {
           "type": "boolean",
           "default": false,

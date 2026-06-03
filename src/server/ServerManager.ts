@@ -14,6 +14,7 @@ export class ServerManager {
     port: number,
     proxyPort: number,
     exposeToNetwork: boolean = false,
+    opencodePath: string = "",
   ): Promise<void> {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
@@ -92,8 +93,9 @@ export class ServerManager {
       if (exposeToNetwork) {
         args.push("--mdns");
       }
+      const opencodeCommand = opencodePath.trim() || "opencode";
 
-      this.serverProcess = spawn("opencode", args, {
+      this.serverProcess = spawn(opencodeCommand, args, {
         cwd,
         stdio: "pipe",
         env: {
@@ -124,7 +126,13 @@ export class ServerManager {
         if (resolved) return;
         resolved = true;
         if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          provider.setError("Could not find the <code>opencode</code> CLI.");
+          if (opencodePath.trim()) {
+            provider.setError(
+              "Could not find the configured <code>opencode.path</code> executable.",
+            );
+          } else {
+            provider.setError("Could not find the <code>opencode</code> CLI.");
+          }
         } else {
           provider.setError(`Failed to start server: ${err.message}`);
         }
