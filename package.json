@@ -30,7 +30,7 @@
       },
       {
         "command": "opencode.toggleChatViewInPanelOrSidebar",
-        "title": "opencode: Toggle Sidebar Chat"
+        "title": "opencode: Toggle Sidebar Chat (Compatibility)"
       },
       {
         "command": "opencode.openChat",

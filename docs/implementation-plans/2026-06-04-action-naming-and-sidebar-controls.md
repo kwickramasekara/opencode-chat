@@ -15,7 +15,7 @@ Implement the action naming cleanup and sidebar chat controls from the high-leve
 ## Architecture Decisions
 
 - **Command IDs remain stable.** Only titles/menus change, plus one new command ID: `opencode.closeSidebarChat`.
-- **Hide compatibility toggle from the Command Palette.** Keep `opencode.toggleChatViewInPanelOrSidebar` registered/contributed, but add a `commandPalette` menu exclusion with `when: "false"` so it does not create a duplicate visible palette entry.
+- **Hide and distinctly label the compatibility toggle.** Keep `opencode.toggleChatViewInPanelOrSidebar` registered/contributed, use a compatibility-specific title to avoid duplicate package command labels, and add a `commandPalette` menu exclusion with `when: "false"` so it does not create a visible palette entry.
 - **Sidebar closed state belongs in `OpencodeViewProvider`.** This is UI-host state, not shared server connection state.
 - **Closed state is not a `WebviewRenderState`.** Server connection state remains `loading | ready | error`; use a separate closed renderer/template helper.
 - **Add-to-chat routing uses existing live-host filtering.** Closing the sidebar makes `isLiveHost === false`, so routing naturally omits it.

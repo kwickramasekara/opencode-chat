@@ -58,7 +58,7 @@ describe("package command contributions", () => {
       "opencode.addSelectionToChat": { title: "opencode: Add Selection to Chat" },
       "opencode.toggleChatView": { title: "opencode: Toggle Sidebar Chat" },
       "opencode.toggleChatViewInPanelOrSidebar": {
-        title: "opencode: Toggle Sidebar Chat",
+        title: "opencode: Toggle Sidebar Chat (Compatibility)",
       },
       "opencode.openChat": { title: "opencode: New Chat in Editor" },
       "opencode.openChatBeside": {
