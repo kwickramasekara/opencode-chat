@@ -69,6 +69,12 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("opencode.closeSidebarChat", () => {
+      provider.closeChat();
+    }),
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand("opencode.openChatBeside", () => {
       panelManager.openChatBeside();
     }),
@@ -113,6 +119,12 @@ export function activate(context: vscode.ExtensionContext) {
   // Register the toggle command for showing/hiding the sidebar
   context.subscriptions.push(
     vscode.commands.registerCommand("opencode.toggleChatView", async () => {
+      if (provider.isChatClosed) {
+        provider.reopenChat();
+        await vscode.commands.executeCommand("opencode.chatView.focus");
+        return;
+      }
+
       if (!provider.isViewVisible) {
         await vscode.commands.executeCommand("opencode.chatView.focus");
         return;

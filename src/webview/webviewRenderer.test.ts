@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderWebviewState } from "./webviewRenderer";
+import { renderClosedWebviewHtml, renderWebviewState } from "./webviewRenderer";
 
 describe("webviewRenderer", () => {
   it("renders loading html from the loading template", () => {
@@ -109,5 +109,21 @@ describe("webviewRenderer", () => {
 
     expect(html).toContain("src=\"not a url\"");
     expect(html).toContain("frame-src not a url");
+  });
+
+  it("renders closed sidebar html without an iframe or server URL", () => {
+    /*
+     * Scenario: closed sidebar state is not a shared connection render state
+     *   Given the sidebar chat has been closed while the server has a URL
+     *   When the renderer renders the closed sidebar template
+     *   Then the HTML unloads the opencode iframe
+     *   And it does not embed the server URL
+     */
+    const html = renderClosedWebviewHtml();
+
+    expect(html).toContain("Sidebar chat is closed");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("http://localhost:4096");
+    expect(html).not.toContain("{{SERVER_URL}}");
   });
 });

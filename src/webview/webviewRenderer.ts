@@ -49,6 +49,10 @@ export function renderIframeHtml(
     .replaceAll("{{BODY_LAYOUT_CSS}}", getBodyLayoutCss(layoutMode));
 }
 
+export function renderClosedWebviewHtml(): string {
+  return readTemplate("closed.html");
+}
+
 export function extractServerOrigin(serverUrl: string): string {
   try {
     return new URL(serverUrl).origin;

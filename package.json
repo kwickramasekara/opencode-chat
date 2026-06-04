@@ -21,40 +21,63 @@
     "commands": [
       {
         "command": "opencode.addToChat",
-        "title": "opencode: Add to Chat",
+        "title": "opencode: Add File to Chat",
         "icon": "$(add)"
       },
       {
         "command": "opencode.toggleChatView",
-        "title": "opencode: Toggle Chat View"
+        "title": "opencode: Toggle Sidebar Chat"
       },
       {
         "command": "opencode.toggleChatViewInPanelOrSidebar",
-        "title": "opencode: Toggle Chat View"
+        "title": "opencode: Toggle Sidebar Chat"
       },
       {
         "command": "opencode.openChat",
-        "title": "opencode: Open Chat"
+        "title": "opencode: New Chat in Editor"
       },
       {
         "command": "opencode.openChatBeside",
-        "title": "opencode: Open Chat Beside"
+        "title": "opencode: New Chat in Editor to the Side"
       },
       {
         "command": "opencode.restart",
-        "title": "opencode: Restart"
+        "title": "opencode: Restart Server"
       },
       {
         "command": "opencode.showOutput",
-        "title": "opencode: Show Output"
+        "title": "opencode: Show Output Channel"
       },
       {
         "command": "opencode.addSelectionToChat",
         "title": "opencode: Add Selection to Chat",
         "icon": "$(add)"
+      },
+      {
+        "command": "opencode.closeSidebarChat",
+        "title": "opencode: Close Sidebar Chat",
+        "icon": "$(close)"
       }
     ],
     "menus": {
+      "commandPalette": [
+        {
+          "command": "opencode.toggleChatViewInPanelOrSidebar",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "opencode.openChat",
+          "when": "view == opencode.chatView",
+          "group": "navigation"
+        },
+        {
+          "command": "opencode.closeSidebarChat",
+          "when": "view == opencode.chatView",
+          "group": "navigation"
+        }
+      ],
       "explorer/context": [
         {
           "command": "opencode.addToChat",

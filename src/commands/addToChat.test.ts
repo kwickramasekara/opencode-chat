@@ -5,6 +5,7 @@ import type { OpencodeWebviewHost } from "../webview/webviewHost";
 import {
   formatFileReference,
   formatSelectionReference,
+  getLiveChatHosts,
   routeTextToChat,
 } from "./addToChat";
 
@@ -13,12 +14,13 @@ function host(
   title: string,
   lastUsedAt: number,
   isActiveHost = false,
+  isLiveHost = true,
 ): OpencodeWebviewHost {
   return {
     id,
     title,
     type: id.startsWith("sidebar") ? "sidebar" : "editor",
-    isLiveHost: true,
+    isLiveHost,
     isActiveHost,
     lastUsedAt,
     disposed: false,
@@ -26,6 +28,10 @@ function host(
     postInsertText: vi.fn(async () => true),
     reveal: vi.fn(),
   };
+}
+
+function closedSidebar(lastUsedAt = 100): OpencodeWebviewHost {
+  return host("sidebar", "Chat", lastUsedAt, false, false);
 }
 
 function selection(startLine: number, startCharacter: number, endLine = startLine, endCharacter = startCharacter) {
@@ -131,6 +137,70 @@ describe("add-to-chat routing", () => {
     expect(items[0].label).toBe("last used (opencode Chat 1)");
     expect(activeEditor.postInsertText).toHaveBeenCalledWith("src/main.ts");
     expect(visibleSidebar.postInsertText).not.toHaveBeenCalled();
+  });
+
+  it("treats a closed sidebar as no live host when it is the only target", async () => {
+    /*
+     * Scenario: closed sidebar is the only known chat host
+     *   Given the sidebar host has been closed and is no longer live
+     *   When add-to-chat routes text through live-host filtering
+     *   Then it behaves as if no chat hosts exist
+     *   And no insert-text message is posted to the closed sidebar
+     */
+    const sidebar = closedSidebar();
+
+    await routeTextToChat("src/main.ts", getLiveChatHosts([sidebar]));
+
+    expect(window.showInformationMessage).toHaveBeenCalledWith("Start opencode chat first.");
+    expect(window.showQuickPick).not.toHaveBeenCalled();
+    expect(sidebar.postInsertText).not.toHaveBeenCalled();
+  });
+
+  it("routes directly to a single live editor when the sidebar is closed", async () => {
+    /*
+     * Scenario: closed sidebar plus one live editor chat
+     *   Given the sidebar host is closed
+     *   And one editor chat is live
+     *   When add-to-chat routes text through live-host filtering
+     *   Then the text is sent directly to the editor chat
+     *   And no insert-text message is posted to the closed sidebar
+     */
+    const sidebar = closedSidebar(30);
+    const editor = host("panel-1", "opencode Chat 1", 20);
+
+    await routeTextToChat("src/main.ts", getLiveChatHosts([sidebar, [editor]]));
+
+    expect(window.showQuickPick).not.toHaveBeenCalled();
+    expect(editor.postInsertText).toHaveBeenCalledWith("src/main.ts");
+    expect(sidebar.postInsertText).not.toHaveBeenCalled();
+  });
+
+  it("offers only editor hosts when the sidebar is closed and multiple editors are live", async () => {
+    /*
+     * Scenario: closed sidebar plus multiple live editor chats
+     *   Given the sidebar host is closed
+     *   And multiple editor chats are live
+     *   When add-to-chat asks the user to choose a target
+     *   Then the picker contains editor hosts only
+     *   And no insert-text message is posted to the closed sidebar
+     */
+    const sidebar = closedSidebar(50);
+    const olderEditor = host("panel-1", "opencode Chat 1", 10);
+    const newerEditor = host("panel-2", "opencode Chat 2", 20);
+    window.showQuickPick.mockImplementationOnce(async (items) => (items as Array<{ host: OpencodeWebviewHost }>)[0]);
+
+    await routeTextToChat("src/main.ts", getLiveChatHosts([sidebar, [olderEditor, newerEditor]]));
+
+    const items = window.showQuickPick.mock.calls[0][0] as Array<{ label: string; host: OpencodeWebviewHost }>;
+    expect(items.map((item) => item.label)).toEqual([
+      "last used (opencode Chat 2)",
+      "opencode Chat 2",
+      "opencode Chat 1",
+    ]);
+    expect(items.every((item) => item.host.type === "editor")).toBe(true);
+    expect(newerEditor.postInsertText).toHaveBeenCalledWith("src/main.ts");
+    expect(olderEditor.postInsertText).not.toHaveBeenCalled();
+    expect(sidebar.postInsertText).not.toHaveBeenCalled();
   });
 
   it("keeps file and selection reference formatting stable", () => {

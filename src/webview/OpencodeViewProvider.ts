@@ -5,6 +5,7 @@ import * as os from "os";
 import { exec } from "child_process";
 import { setupWebviewBridge, type WebviewBridge } from "./webviewBridge";
 import {
+  renderClosedWebviewHtml,
   renderWebviewState,
   type WebviewRenderState,
 } from "./webviewRenderer";
@@ -23,6 +24,7 @@ export class OpencodeViewProvider
   private _sidebarType: "primary" | "auxiliary" | null = null;
   private _lastUsedAt = 0;
   private _disposed = false;
+  private _closed = false;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -39,11 +41,15 @@ export class OpencodeViewProvider
   }
 
   get isLiveHost(): boolean {
-    return !!this._view && !!this._bridge && !this._disposed;
+    return !!this._view && !!this._bridge && !this._closed && !this._disposed;
   }
 
   get isActiveHost(): boolean {
     return this.isLiveHost && this.isViewVisible;
+  }
+
+  get isChatClosed(): boolean {
+    return this._closed;
   }
 
   get sidebarType(): "primary" | "auxiliary" | null {
@@ -60,10 +66,8 @@ export class OpencodeViewProvider
     this._lastUsedAt = Date.now();
 
     this._bridge?.dispose();
-    this._bridge = setupWebviewBridge({
-      webview: webviewView.webview,
-      playAudio: (src) => this._playAudioDataUri(src),
-    });
+    this._bridge = undefined;
+    if (!this._closed) this._setupBridge();
     webviewView.onDidDispose(() => {
       this._bridge?.dispose();
       this._bridge = undefined;
@@ -98,6 +102,19 @@ export class OpencodeViewProvider
     this._renderCurrentState();
   }
 
+  closeChat(): void {
+    this._closed = true;
+    this._bridge?.dispose();
+    this._bridge = undefined;
+    this._renderCurrentState();
+  }
+
+  reopenChat(): void {
+    this._closed = false;
+    if (this._view && !this._bridge) this._setupBridge();
+    this._renderCurrentState();
+  }
+
   postInsertText(text: string): Thenable<boolean> | undefined {
     if (!this.isLiveHost || !this._bridge) return undefined;
 
@@ -115,7 +132,21 @@ export class OpencodeViewProvider
   private _renderCurrentState() {
     if (!this._view) return;
 
+    if (this._closed) {
+      this._view.webview.html = renderClosedWebviewHtml();
+      return;
+    }
+
     this._view.webview.html = renderWebviewState(this._state, "sidebar");
+  }
+
+  private _setupBridge(): void {
+    if (!this._view) return;
+
+    this._bridge = setupWebviewBridge({
+      webview: this._view.webview,
+      playAudio: (src) => this._playAudioDataUri(src),
+    });
   }
 
   // ── System-level audio playback for environments without codec support ──

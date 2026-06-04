@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type * as vscode from "vscode";
-import { Uri, createWebviewViewMock } from "../test/vscodeMock";
+import { Disposable, Uri, createWebviewViewMock } from "../test/vscodeMock";
 import { OpencodeViewProvider } from "./OpencodeViewProvider";
 
 function extensionUri(): vscode.Uri {
@@ -49,5 +49,74 @@ describe("OpencodeViewProvider sidebar host adapter", () => {
       type: "insert-text",
       text: "src/main.ts",
     });
+  });
+
+  it("closes the sidebar iframe and bridge without disposing the resolved view", () => {
+    /*
+     * Scenario: closing the sidebar chat unloads only the embedded chat host
+     *   Given VS Code has resolved the sidebar webview view and the server is ready
+     *   When the provider closes the sidebar chat
+     *   Then the webview stays resolved but is no longer a live chat host
+     *   And the iframe HTML and message bridge are removed
+     */
+    const provider = new OpencodeViewProvider(extensionUri());
+    const view = createWebviewViewMock();
+    const disposeBridgeSubscription = vi.fn();
+    view.webview.onDidReceiveMessage.mockReturnValue(
+      new Disposable(disposeBridgeSubscription),
+    );
+
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    provider.renderState({ type: "ready", serverUrl: "http://localhost:4096" });
+
+    provider.closeChat();
+
+    expect(provider.isLiveHost).toBe(false);
+    expect(provider.disposed).toBe(false);
+    expect(view.webview.html).toContain("Sidebar chat is closed");
+    expect(view.webview.html).not.toContain("<iframe");
+    expect(view.webview.html).not.toContain("http://localhost:4096");
+    expect(disposeBridgeSubscription).toHaveBeenCalledOnce();
+    expect(provider.postInsertText("src/main.ts")).toBeUndefined();
+  });
+
+  it("keeps connection updates closed until explicit reopen renders the latest state", () => {
+    /*
+     * Scenario: connection fan-out does not resurrect a closed sidebar chat
+     *   Given the sidebar chat is closed while the server is loading
+     *   When later connection states arrive
+     *   Then the sidebar remains closed and non-live
+     *   When the provider explicitly reopens the chat
+     *   Then it renders the most recent saved connection state
+     */
+    const provider = new OpencodeViewProvider(extensionUri());
+    const view = createWebviewViewMock();
+
+    provider.resolveWebviewView(view as unknown as vscode.WebviewView);
+    provider.setLoading();
+    provider.closeChat();
+
+    provider.setServerUrl("http://localhost:4096");
+
+    expect(provider.isLiveHost).toBe(false);
+    expect(view.webview.html).toContain("Sidebar chat is closed");
+    expect(view.webview.html).not.toContain("http://localhost:4096");
+
+    provider.reopenChat();
+
+    expect(provider.isLiveHost).toBe(true);
+    expect(view.webview.html).toContain("http://localhost:4096");
+    expect(view.webview.html).toContain("<iframe");
+
+    provider.closeChat();
+    provider.setError("opencode failed", false);
+    expect(view.webview.html).toContain("Sidebar chat is closed");
+    expect(view.webview.html).not.toContain("opencode failed");
+
+    provider.reopenChat();
+
+    expect(provider.isLiveHost).toBe(true);
+    expect(view.webview.html).toContain("opencode failed");
+    expect(view.webview.html).not.toContain("<iframe");
   });
 });
