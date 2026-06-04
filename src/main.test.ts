@@ -80,7 +80,6 @@ describe("extension activation diagnostics", () => {
         "opencode.addToChat",
         "opencode.addSelectionToChat",
         "opencode.toggleChatView",
-        "opencode.toggleChatViewInPanelOrSidebar",
         "opencode.closeSidebarChat",
         "opencode.openChat",
         "opencode.openChatBeside",

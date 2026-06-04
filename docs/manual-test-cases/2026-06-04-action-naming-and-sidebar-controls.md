@@ -35,7 +35,7 @@ Check expected entries:
 Also check:
 
 - No two visible opencode entries have the same title.
-- Any compatibility toggle command does not create a confusing duplicate palette entry.
+- No duplicate sidebar toggle alias appears.
 
 ### 2. Sidebar toolbar shows the new actions
 
@@ -121,7 +121,6 @@ Check:
 Record:
 
 - VS Code version and local/remote environment.
-- Whether the compatibility toggle command was hidden or simply renamed.
 - Which toolbar icons were used.
 - Whether closing the sidebar iframe visibly released the embedded chat UI.
 - Any webview console or extension-host errors.

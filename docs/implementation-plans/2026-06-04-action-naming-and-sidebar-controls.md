@@ -15,7 +15,7 @@ Implement the action naming cleanup and sidebar chat controls from the high-leve
 ## Architecture Decisions
 
 - **Command IDs remain stable.** Only titles/menus change, plus one new command ID: `opencode.closeSidebarChat`.
-- **Hide and distinctly label the compatibility toggle.** Keep `opencode.toggleChatViewInPanelOrSidebar` registered/contributed, use a compatibility-specific title to avoid duplicate package command labels, and add a `commandPalette` menu exclusion with `when: "false"` so it does not create a visible palette entry.
+- **Remove the duplicate sidebar toggle alias.** `opencode.toggleChatView` is the single sidebar toggle command.
 - **Sidebar closed state belongs in `OpencodeViewProvider`.** This is UI-host state, not shared server connection state.
 - **Closed state is not a `WebviewRenderState`.** Server connection state remains `loading | ready | error`; use a separate closed renderer/template helper.
 - **Add-to-chat routing uses existing live-host filtering.** Closing the sidebar makes `isLiveHost === false`, so routing naturally omits it.
@@ -41,14 +41,14 @@ flowchart TD
 
 ### Task 1: Manifest naming and toolbar contributions
 
-**Description:** Update `package.json` command titles, contribute `opencode.closeSidebarChat`, add sidebar `view/title` actions, and hide the compatibility toggle from the visible Command Palette.
+**Description:** Update `package.json` command titles, contribute `opencode.closeSidebarChat`, add sidebar `view/title` actions, and remove the duplicate sidebar toggle alias.
 
 **Acceptance criteria:**
 
 - [ ] Existing command IDs have the titles specified by the spec.
 - [ ] `opencode.closeSidebarChat` is contributed with title `opencode: Close Sidebar Chat` and close icon.
 - [ ] `view/title` contains scoped entries for `opencode.openChat` and `opencode.closeSidebarChat` with `when: "view == opencode.chatView"`.
-- [ ] `opencode.toggleChatViewInPanelOrSidebar` is not a duplicate visible palette entry.
+- [ ] Only one sidebar toggle command is contributed and registered.
 
 **Verification:**
 
@@ -210,7 +210,7 @@ Manual/runtime checks remain appropriate for actual VS Code toolbar rendering, i
 
 | Risk | Impact | Mitigation |
 | --- | --- | --- |
-| Compatibility command hiding via `when: "false"` is not accepted by manifest tooling | Duplicate visible palette title | Verify with compile/tests; fallback to non-duplicate compatibility title if needed |
+| Duplicate sidebar toggle command remains somewhere | Duplicate visible palette title or command surface confusion | Verify package contributions and activation registrations contain only `opencode.toggleChatView` |
 | Connection updates recreate sidebar bridge/iframe after close | Spec violation and routing bug | Keep `_closed` gate in provider render path and test loading→ready updates |
 | Reopen creates duplicate message handlers | Duplicate add-to-chat posts/listeners | Dispose bridge on close; recreate once on reopen; add lifecycle tests where feasible |
 | Tests overfit private state | Brittle suite | Prefer observable webview HTML, registered commands, and host liveness |

@@ -149,12 +149,6 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-  context.subscriptions.push(
-    vscode.commands.registerCommand("opencode.toggleChatViewInPanelOrSidebar", async () => {
-      await vscode.commands.executeCommand("opencode.toggleChatView");
-    }),
-  );
-
   // Register the restart command to kill the server and start fresh
   context.subscriptions.push(
     vscode.commands.registerCommand("opencode.restart", () => {

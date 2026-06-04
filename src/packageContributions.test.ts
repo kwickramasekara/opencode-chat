@@ -57,9 +57,6 @@ describe("package command contributions", () => {
       "opencode.addToChat": { title: "opencode: Add File to Chat" },
       "opencode.addSelectionToChat": { title: "opencode: Add Selection to Chat" },
       "opencode.toggleChatView": { title: "opencode: Toggle Sidebar Chat" },
-      "opencode.toggleChatViewInPanelOrSidebar": {
-        title: "opencode: Toggle Sidebar Chat (Compatibility)",
-      },
       "opencode.openChat": { title: "opencode: New Chat in Editor" },
       "opencode.openChatBeside": {
         title: "opencode: New Chat in Editor to the Side",
@@ -118,7 +115,7 @@ describe("package command contributions", () => {
      *   Given opencode command contributions are loaded
      *   When visible Command Palette entries are derived
      *   Then no visible opencode command title appears more than once
-     *   And the compatibility toggle alias is hidden from the palette
+     *   And removed duplicate aliases cannot appear in the palette
      */
     const packageJson = loadPackageJson();
     const hiddenCommands = commandPaletteHiddenCommands(packageJson);
@@ -130,7 +127,7 @@ describe("package command contributions", () => {
       (title, index) => visibleOpencodeTitles.indexOf(title) !== index,
     );
 
-    expect(hiddenCommands).toContain("opencode.toggleChatViewInPanelOrSidebar");
+    expect(commandMap(packageJson).has("opencode.toggleChatViewInPanelOrSidebar")).toBe(false);
     expect(duplicateTitles).toEqual([]);
   });
 });

@@ -21,7 +21,6 @@ The goal is clarity, not new chat-state transfer behavior. In particular, the si
 | `opencode.addToChat` | `opencode: Add to Chat` | Add current file/editor context to a live opencode host. |
 | `opencode.addSelectionToChat` | `opencode: Add Selection to Chat` | Add current editor selection to a live opencode host. |
 | `opencode.toggleChatView` | `opencode: Toggle Chat View` | Toggle/focus the sidebar chat view. |
-| `opencode.toggleChatViewInPanelOrSidebar` | `opencode: Toggle Chat View` | Compatibility command that currently duplicates the same user-facing title. |
 | `opencode.openChat` | `opencode: Open Chat` | Open a new opencode editor-tab chat host. |
 | `opencode.openChatBeside` | `opencode: Open Chat Beside` | Open a new opencode editor-tab chat host beside the current editor. |
 | `opencode.restart` | `opencode: Restart` | Restart shared opencode server/proxy. |
@@ -41,7 +40,7 @@ The goal is clarity, not new chat-state transfer behavior. In particular, the si
 
 | Problem | Impact |
 | --- | --- |
-| `opencode.toggleChatView` and `opencode.toggleChatViewInPanelOrSidebar` share the same title | Command Palette can show indistinguishable entries. |
+| Duplicate sidebar toggle commands can share the same title | Command Palette can show indistinguishable entries. |
 | `Open Chat` does not say editor tab | Users cannot tell whether it opens sidebar chat or editor-tab chat. |
 | `Toggle Chat View` is vague | It means sidebar chat, but “view” is broad. |
 | `Open Chat Beside` is slightly non-standard | VS Code users are more likely to recognize “to the Side”. |
@@ -53,14 +52,13 @@ Use surface-explicit command titles and sidebar controls.
 
 ### Command title cleanup
 
-Keep command IDs stable for compatibility, but update titles to be clearer:
+Use one canonical sidebar toggle command and update titles to be clearer:
 
 | Command ID | New title |
 | --- | --- |
 | `opencode.addToChat` | `opencode: Add File to Chat` |
 | `opencode.addSelectionToChat` | `opencode: Add Selection to Chat` |
 | `opencode.toggleChatView` | `opencode: Toggle Sidebar Chat` |
-| `opencode.toggleChatViewInPanelOrSidebar` | Hide from Command Palette if practical, otherwise `opencode: Toggle Sidebar Chat` |
 | `opencode.openChat` | `opencode: New Chat in Editor` |
 | `opencode.openChatBeside` | `opencode: New Chat in Editor to the Side` |
 | `opencode.restart` | `opencode: Restart Server` |
@@ -70,7 +68,7 @@ Notes:
 
 - “Editor” means a normal VS Code editor tab, not a bottom panel.
 - “Sidebar Chat” means the contributed `opencode.chatView` webview view.
-- The compatibility toggle command may remain registered, but it should not create a second confusing palette entry if it can be hidden.
+- Do not keep duplicate sidebar toggle aliases in the contributed command surface.
 
 ### Sidebar view-title actions
 
@@ -150,7 +148,7 @@ The exact implementation can be either:
 ## Success Criteria
 
 - Command Palette and menus use consistent, surface-explicit titles.
-- No two visible Command Palette entries have the same opencode title unless one is intentionally hidden/compat-only.
+- No two Command Palette entries have the same opencode title.
 - The opencode sidebar view title exposes `New Chat in Editor` and `Close This Chat` actions.
 - `New Chat in Editor` opens a new editor-tab chat host.
 - `Close This Chat` unloads the sidebar iframe and removes the sidebar from live add-to-chat targets.
@@ -161,4 +159,4 @@ The exact implementation can be either:
 
 - Which icon should be used for `New Chat in Editor`? Candidate: `$(new-file)` or `$(open-preview)`.
 - Which icon should be used for `Close This Chat`? Candidate: `$(close)`.
-- Should `opencode.toggleChatViewInPanelOrSidebar` be hidden from Command Palette, or simply share the clearer `Toggle Sidebar Chat` title as a compatibility command?
+- None.

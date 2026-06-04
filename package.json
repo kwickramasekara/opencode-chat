@@ -29,10 +29,6 @@
         "title": "opencode: Toggle Sidebar Chat"
       },
       {
-        "command": "opencode.toggleChatViewInPanelOrSidebar",
-        "title": "opencode: Toggle Sidebar Chat (Compatibility)"
-      },
-      {
         "command": "opencode.openChat",
         "title": "opencode: New Chat in Editor"
       },
@@ -60,12 +56,6 @@
       }
     ],
     "menus": {
-      "commandPalette": [
-        {
-          "command": "opencode.toggleChatViewInPanelOrSidebar",
-          "when": "false"
-        }
-      ],
       "view/title": [
         {
           "command": "opencode.openChat",

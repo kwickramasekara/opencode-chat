@@ -25,7 +25,7 @@ Check:
 ### 2. Sidebar behavior still works
 
 Given no editor-tab assumptions,
-when you run `opencode.toggleChatViewInPanelOrSidebar`,
+when you run `opencode.toggleChatView`,
 then the existing sidebar/auxiliary chat view opens/toggles as before.
 
 ### 3. Add-to-chat with one host routes directly

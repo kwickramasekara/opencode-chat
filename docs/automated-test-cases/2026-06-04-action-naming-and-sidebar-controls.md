@@ -44,7 +44,7 @@ Expected titles:
 Given opencode command contributions are loaded  
 When visible Command Palette entries are derived  
 Then no visible opencode command title appears more than once  
-And any compatibility alias with duplicate behavior is hidden or otherwise not user-confusing
+And no duplicate sidebar toggle alias is contributed
 
 ### Scenario: Sidebar view-title actions are contributed
 
