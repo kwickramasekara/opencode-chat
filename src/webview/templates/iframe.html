@@ -50,13 +50,16 @@
         var vscode = acquireVsCodeApi();
         var iframe = document.querySelector("iframe");
 
-        // Relay copy-request from iframe to extension host
+        // Relay copy-request / play-audio / open-external from iframe to extension host
         window.addEventListener("message", function (e) {
           if (e.data && e.data.type === "copy-request") {
             vscode.postMessage({ type: "copy-request", text: e.data.text });
           }
           if (e.data && e.data.type === "play-audio") {
             vscode.postMessage({ type: "play-audio", src: e.data.src });
+          }
+          if (e.data && e.data.type === "open-external") {
+            vscode.postMessage({ type: "open-external", url: e.data.url });
           }
         });
 
