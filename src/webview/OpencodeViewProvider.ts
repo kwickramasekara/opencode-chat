@@ -9,8 +9,13 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
   private _serverUrl?: string;
   private _error?: { message: string; showInstallHint: boolean };
   private _sidebarType: "primary" | "auxiliary" | null = null;
+  private _isDevMode = false;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
+
+  setDevMode(enabled: boolean) {
+    this._isDevMode = enabled;
+  }
 
   get isViewVisible(): boolean {
     return !!this._view?.visible;
@@ -96,9 +101,16 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
     return fs.readFileSync(templatePath, "utf-8");
   }
 
+  private _processTemplate(name: string): string {
+    return this._readTemplate(name).replaceAll(
+      "{{DEV_MODE}}",
+      this._isDevMode ? "flex" : "none",
+    );
+  }
+
   private _setLoadingHtml() {
     if (!this._view) return;
-    this._view.webview.html = this._readTemplate("loading.html");
+    this._view.webview.html = this._processTemplate("loading.html");
   }
 
   private _getIframeHtml(serverUrl: string): string {
@@ -107,7 +119,7 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
       serverOrigin = new URL(serverUrl).origin;
     } catch {}
 
-    return this._readTemplate("iframe.html")
+    return this._processTemplate("iframe.html")
       .replaceAll("{{SERVER_URL}}", serverUrl)
       .replaceAll("{{SERVER_ORIGIN}}", serverOrigin);
   }
@@ -117,7 +129,7 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
       ? "<p>Make sure <code>opencode</code> is installed and available in your PATH.</p>"
       : "";
 
-    return this._readTemplate("error.html")
+    return this._processTemplate("error.html")
       .replaceAll("{{ERROR_MESSAGE}}", message)
       .replaceAll("{{INSTALL_HINT}}", installHint);
   }

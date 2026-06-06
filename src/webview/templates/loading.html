@@ -39,9 +39,25 @@
         margin: 0;
         opacity: 0.7;
       }
+      .dev-badge {
+        position: fixed;
+        bottom: 8px;
+        right: 8px;
+        background: #e74c3c;
+        color: white;
+        font-family: sans-serif;
+        font-size: 10px;
+        font-weight: bold;
+        padding: 2px 6px;
+        border-radius: 4px;
+        z-index: 9999;
+        pointer-events: none;
+        display: {{DEV_MODE}};
+      }
     </style>
   </head>
   <body>
+    <div class="dev-badge">DEV</div>
     <div class="container">
       <svg
         class="icon"

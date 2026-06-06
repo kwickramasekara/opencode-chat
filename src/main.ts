@@ -33,6 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
 
   // Register the webview panel provider
   const provider = new OpencodeViewProvider(context.extensionUri);
+  provider.setDevMode(context.extensionMode === vscode.ExtensionMode.Development);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider("opencode.chatView", provider, {
       webviewOptions: { retainContextWhenHidden: true },
