@@ -48,6 +48,9 @@ export class OpencodeViewProvider implements vscode.WebviewViewProvider {
       if (message.type === "play-audio" && typeof message.src === "string") {
         void this._playAudioDataUri(message.src);
       }
+      if (message.type === "open-external" && typeof message.url === "string") {
+        vscode.env.openExternal(vscode.Uri.parse(message.url));
+      }
     });
 
     this._renderCurrentState();

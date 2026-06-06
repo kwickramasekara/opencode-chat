@@ -298,6 +298,33 @@ const WEBVIEW_SCRIPT = /*html*/ `
         }
       }
     });
+
+    // ── Intercept external link clicks and relay to extension host ──
+    document.addEventListener("click", function (e) {
+      var anchor = e.target.closest("a");
+      if (!anchor) return;
+
+      var href = anchor.getAttribute("href");
+      if (!href) return;
+
+      // Only intercept external HTTP(S) URLs that leave the current origin
+      var isExternal = false;
+      try {
+        var url = new URL(href, window.location.href);
+        if (
+          (url.protocol === "http:" || url.protocol === "https:") &&
+          url.origin !== window.location.origin
+        ) {
+          isExternal = true;
+        }
+      } catch (err) {}
+
+      if (isExternal) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.parent.postMessage({ type: "open-external", url: href }, "*");
+      }
+    }, true);
   })();
 </script>
 `;
