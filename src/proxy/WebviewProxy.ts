@@ -8,6 +8,13 @@ import * as net from "net";
 // cross-origin limitations: keyboard shortcuts (copy/paste/cut),
 // clipboard access, and audio playback (Web Audio API fallback).
 
+const INJECTED_CSS = /*html*/ `
+<style>
+  /* Force full-width layout for opencode content inside webview */
+  html, body, #root, #__next { max-width: none !important; width: 100% !important; }
+</style>
+`;
+
 const WEBVIEW_SCRIPT = /*html*/ `
 <script>
   (function () {
@@ -334,8 +341,8 @@ export function startWebviewProxy(
             });
             proxyRes.on("end", () => {
               body = body.includes("</head>")
-                ? body.replace("</head>", WEBVIEW_SCRIPT + "</head>")
-                : body + WEBVIEW_SCRIPT;
+                ? body.replace("</head>", INJECTED_CSS + WEBVIEW_SCRIPT + "</head>")
+                : body + INJECTED_CSS + WEBVIEW_SCRIPT;
 
               const outHeaders = { ...proxyRes.headers };
               outHeaders["content-length"] = Buffer.byteLength(body).toString();
